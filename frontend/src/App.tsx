@@ -10,10 +10,11 @@ import { SafetyPage } from './features/safety/SafetyPage';
 import { RecyclerDashboardPage } from './features/recyclerMode/RecyclerDashboardPage';
 import { MineralsImpactPage } from './features/minerals/MineralsImpactPage';
 import { VerifyPage } from './features/verify/VerifyPage';
+import { ProfilePage } from './features/profile/ProfilePage';
 
 export const App: React.FC = () => {
   return (
-    <Router>
+    <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <div className="min-h-screen bg-surface-bg text-stone-900 font-sans">
         <Navigation />
         <main>
@@ -28,6 +29,7 @@ export const App: React.FC = () => {
             <Route path="/minerals" element={<MineralsImpactPage />} />
             <Route path="/verify" element={<VerifyPage />} />
             <Route path="/verify/:identifier" element={<VerifyPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
           </Routes>
         </main>
       </div>

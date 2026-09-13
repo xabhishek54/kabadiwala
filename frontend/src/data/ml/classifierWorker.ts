@@ -38,20 +38,6 @@ type ConditionLabel = (typeof CONDITION_LABELS)[number];
 // ---------------------------------------------------------------------------
 // Heuristic image-feature fallback (no TF.js)
 // ---------------------------------------------------------------------------
-/**
- * Analyses raw pixel statistics to guess category + condition without a neural
- * network. Used as the fallback when TF.js is unavailable.
- *
- * Logic (simplified field heuristics):
- *  - Green-channel dominance → PCB
- *  - Very dark image → CABLE (black sheathing)
- *  - High mean brightness + glass-like → CRT / LCD_PANEL
- *  - Else → MIXED_PLASTIC (safest generic bucket)
- *  Condition:
- *  - Low contrast (std < 35) → likely intact packaging
- *  - High variance → damaged
- *  - Very high variance → stripped
- */
 function heuristicClassify(imageData: ImageData): {
   category: CategoryLabel;
   condition: ConditionLabel;
@@ -72,7 +58,6 @@ function heuristicClassify(imageData: ImageData): {
   const bMean = bSum / pixelCount;
   const brightness = (rMean + gMean + bMean) / 3;
 
-  // Compute variance for condition proxy
   let variance = 0;
   for (let i = 0; i < data.length; i += 4) {
     const px = (data[i] + data[i + 1] + data[i + 2]) / 3;
@@ -80,7 +65,6 @@ function heuristicClassify(imageData: ImageData): {
   }
   const stdDev = Math.sqrt(variance / pixelCount);
 
-  // Category heuristic
   let category: CategoryLabel;
   if (gMean > rMean * 1.15 && gMean > bMean * 1.1) {
     category = 'PCB';
@@ -98,7 +82,6 @@ function heuristicClassify(imageData: ImageData): {
     category = 'MIXED_PLASTIC';
   }
 
-  // Condition heuristic from pixel variance
   let condition: ConditionLabel;
   if (stdDev < 35) {
     condition = 'intact';
@@ -108,7 +91,6 @@ function heuristicClassify(imageData: ImageData): {
     condition = 'stripped';
   }
 
-  // Low confidence — clearly labelled as heuristic-based
   const confidence = 0.35 + Math.random() * 0.10;
 
   return { category, condition, confidence };
@@ -120,15 +102,13 @@ function heuristicClassify(imageData: ImageData): {
 let modelPromise: Promise<any> | null = null;
 
 async function loadModel(): Promise<any> {
-  // Dynamically import TF.js — allows bundler to tree-shake when unused
   const tf = await import(/* @vite-ignore */ '@tensorflow/tfjs');
   await tf.ready();
-  // Model is served from /public/models/classifier/model.json
   const model = await tf.loadLayersModel('/models/classifier/model.json');
   return { tf, model };
 }
 
-async function tfClassify(imageData: ImageData): Promise<{
+async function tfClassify(rawImageData: any): Promise<{
   category: CategoryLabel;
   condition: ConditionLabel;
   confidence: number;
@@ -139,8 +119,18 @@ async function tfClassify(imageData: ImageData): Promise<{
 
   const { tf, model } = await modelPromise;
 
+  // Re-construct proper ImageData object inside Web Worker thread
+  const width = rawImageData.width;
+  const height = rawImageData.height;
+  const rawBuffer = rawImageData.data;
+
+  const uint8Data = new Uint8ClampedArray(
+    rawBuffer.buffer ? rawBuffer.buffer : rawBuffer
+  );
+  const imgData = new ImageData(uint8Data, width, height);
+
   const tensor = tf.tidy(() => {
-    const img = tf.browser.fromPixels({ data: imageData.data, width: imageData.width, height: imageData.height });
+    const img = tf.browser.fromPixels(imgData);
     return img
       .toFloat()
       .div(255.0)
@@ -149,7 +139,6 @@ async function tfClassify(imageData: ImageData): Promise<{
   });
 
   const outputs = model.predict(tensor) as any[];
-  // Model has 2 heads: [category_logits (7), condition_logits (3)]
   const catLogits: number[] = await outputs[0].data();
   const condLogits: number[] = await outputs[1].data();
 
@@ -158,7 +147,6 @@ async function tfClassify(imageData: ImageData): Promise<{
   const catIdx = catLogits.indexOf(Math.max(...catLogits));
   const condIdx = condLogits.indexOf(Math.max(...condLogits));
 
-  // Softmax confidence for category
   const catMax = Math.max(...catLogits);
   const catSoftmax = catLogits.map((v) => Math.exp(v - catMax));
   const catSum = catSoftmax.reduce((a, b) => a + b, 0);
@@ -177,12 +165,11 @@ async function tfClassify(imageData: ImageData): Promise<{
 self.onmessage = async (event: MessageEvent) => {
   if (event.data?.type !== 'CLASSIFY') return;
 
-  const imageData: ImageData = event.data.imageData;
+  const rawImageData = event.data.imageData;
 
   try {
-    // Race: TF.js inference vs 3 s timeout
     const result = await Promise.race([
-      tfClassify(imageData),
+      tfClassify(rawImageData),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('TF.js inference timeout (3s)')), 3000)
       ),
@@ -190,9 +177,16 @@ self.onmessage = async (event: MessageEvent) => {
     self.postMessage({ type: 'RESULT', ...result });
   } catch (tfError) {
     console.warn('[ClassifierWorker] TF.js failed, using heuristic:', tfError);
-    // Graceful fallback to pixel-heuristic classifier
     try {
-      const fallback = heuristicClassify(imageData);
+      const width = rawImageData.width;
+      const height = rawImageData.height;
+      const rawBuffer = rawImageData.data;
+      const uint8Data = new Uint8ClampedArray(
+        rawBuffer.buffer ? rawBuffer.buffer : rawBuffer
+      );
+      const imgData = new ImageData(uint8Data, width, height);
+
+      const fallback = heuristicClassify(imgData);
       self.postMessage({ type: 'RESULT', ...fallback, fallback: true });
     } catch (heurError) {
       self.postMessage({ type: 'ERROR', message: String(heurError) });
