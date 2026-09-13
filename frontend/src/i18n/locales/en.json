@@ -52,8 +52,18 @@
   },
   "safety": {
     "title": "Safety Guidance",
-    "batteryTip": "Never crush or burn batteries, fire hazard!",
-    "crtTip": "Handle CRT glass carefully to avoid implosion, wear mask!",
-    "cableTip": "Do not burn cables in the open, toxic fumes are hazardous!"
+    "subtitle": "Health & Safety Guidelines — Stay Safe, Work Smart",
+    "batteryTitle": "Battery Handling Safety",
+    "batteryTip": "Never crush or burn lithium batteries; fire and chemical explosion hazard!",
+    "crtTitle": "CRT Vacuum Tube Safety",
+    "crtTip": "Handle CRT glass carefully to prevent implosion; always wear mask and goggles!",
+    "cableTitle": "Avoid Cable Burning",
+    "cableTip": "Do not burn wire insulation outdoors; toxic dioxin fumes damage your lungs!",
+    "acidTitle": "No Acid Extraction",
+    "acidTip": "Never use nitric acid at home to leach metal from circuit boards; causes severe skin burns!",
+    "smokeTitle": "PCB Fume Protection",
+    "smokeTip": "Desoldering or heating circuit boards generates toxic fumes; work only in ventilated areas!",
+    "ppeTitle": "Personal Protective Gear",
+    "ppeTip": "Always wear thick protective gloves and sturdy boots when sorting sharp metal scrap!"
   }
 }

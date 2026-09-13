@@ -2,14 +2,39 @@ from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
 from app.models.price import PriceObservation
 from app.models.enums import MaterialCategory, PriceChannel
 from app.schemas.price import PriceObservationCreate, PriceObservationResponse, PriceAggregateResponse
+from app.services.pricing_engine import refine_price
 
 router = APIRouter(prefix="/prices", tags=["prices"])
+
+
+class PriceRefineRequest(BaseModel):
+    category: str
+    weight_kg: float
+    condition: str = "intact"
+    district: str = "Pune"
+
+
+@router.post("/refine")
+def refine_price_estimate(payload: PriceRefineRequest, db: Session = Depends(get_db)):
+    """
+    Refine a lot's price estimate using the server-side GBDT model.
+    Returns detailed explainability breakdown for the transparent price UI.
+    """
+    result = refine_price(
+        category=payload.category,
+        weight_kg=payload.weight_kg,
+        condition=payload.condition,
+        district=payload.district,
+        db=db,
+    )
+    return result
 
 @router.post("/observations", response_model=PriceObservationResponse, status_code=status.HTTP_201_CREATED)
 def record_price_observation(payload: PriceObservationCreate, db: Session = Depends(get_db)):

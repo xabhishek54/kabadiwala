@@ -1,0 +1,16 @@
+{
+  "modelTopology": {
+    "class_name": "Functional",
+    "config": {
+      "name": "ewaste_classifier_stub",
+      "trainable": true,
+      "layers": [],
+      "input_layers": [],
+      "output_layers": []
+    }
+  },
+  "format": "layers-model",
+  "generatedBy": "kabadiwala-connect-stub-v1",
+  "convertedBy": null,
+  "weightsManifest": []
+}

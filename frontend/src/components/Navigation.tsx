@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { IndianRupee, PlusCircle, BookOpen, ShieldAlert, WifiOff, Globe } from 'lucide-react';
+import { IndianRupee, PlusCircle, BookOpen, ShieldAlert, WifiOff, Globe, Factory } from 'lucide-react';
 
 export const Navigation: React.FC = () => {
   const { t, i18n } = useTranslation();
@@ -26,7 +26,7 @@ export const Navigation: React.FC = () => {
   return (
     <>
       {/* Top Header */}
-      <header className="sticky top-0 z-40 bg-surface-card border-b border-surface-border px-4 py-3 shadow-soft flex items-center justify-between">
+      <header className="sticky top-0 z-40 bg-surface-card border-b border-surface-border px-4 py-2.5 shadow-soft flex items-center justify-between">
         <div className="flex items-center space-x-2">
           <div className="w-9 h-9 rounded-xl bg-brand-500 flex items-center justify-center text-white font-bold text-lg shadow-sm">
             K
@@ -37,36 +37,53 @@ export const Navigation: React.FC = () => {
           </div>
         </div>
 
-        {/* Language Switcher */}
-        <div className="flex items-center space-x-1 bg-surface-muted p-1 rounded-xl border border-stone-200">
-          <Globe size={14} className="text-stone-500 ml-1.5 mr-0.5" />
-          <button
-            type="button"
-            onClick={() => changeLanguage('hi')}
-            className={`px-2 py-1 text-xs font-semibold rounded-lg transition-colors ${
-              i18n.language === 'hi' ? 'bg-brand-600 text-white shadow-sm' : 'text-stone-600 hover:text-stone-900'
-            }`}
+        <div className="flex items-center space-x-2">
+          {/* Recycler Mode Switcher Link */}
+          <NavLink
+            to="/recycler"
+            className={({ isActive }) =>
+              `tap-target px-2.5 py-1 rounded-xl text-xs font-bold flex items-center space-x-1 border transition-colors ${
+                isActive
+                  ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
+                  : 'bg-stone-100 text-stone-700 hover:bg-stone-200 border-stone-300'
+              }`
+            }
           >
-            हिंदी
-          </button>
-          <button
-            type="button"
-            onClick={() => changeLanguage('mr')}
-            className={`px-2 py-1 text-xs font-semibold rounded-lg transition-colors ${
-              i18n.language === 'mr' ? 'bg-brand-600 text-white shadow-sm' : 'text-stone-600 hover:text-stone-900'
-            }`}
-          >
-            मराठी
-          </button>
-          <button
-            type="button"
-            onClick={() => changeLanguage('en')}
-            className={`px-2 py-1 text-xs font-semibold rounded-lg transition-colors ${
-              i18n.language === 'en' ? 'bg-brand-600 text-white shadow-sm' : 'text-stone-600 hover:text-stone-900'
-            }`}
-          >
-            EN
-          </button>
+            <Factory size={14} />
+            <span className="hidden sm:inline">Recycler Portal</span>
+          </NavLink>
+
+          {/* Language Switcher */}
+          <div className="flex items-center space-x-1 bg-surface-muted p-1 rounded-xl border border-stone-200">
+            <Globe size={14} className="text-stone-500 ml-1.5 mr-0.5" />
+            <button
+              type="button"
+              onClick={() => changeLanguage('hi')}
+              className={`px-2 py-1 text-xs font-semibold rounded-lg transition-colors ${
+                i18n.language === 'hi' ? 'bg-brand-600 text-white shadow-sm' : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              हिंदी
+            </button>
+            <button
+              type="button"
+              onClick={() => changeLanguage('mr')}
+              className={`px-2 py-1 text-xs font-semibold rounded-lg transition-colors ${
+                i18n.language === 'mr' ? 'bg-brand-600 text-white shadow-sm' : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              मराठी
+            </button>
+            <button
+              type="button"
+              onClick={() => changeLanguage('en')}
+              className={`px-2 py-1 text-xs font-semibold rounded-lg transition-colors ${
+                i18n.language === 'en' ? 'bg-brand-600 text-white shadow-sm' : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              EN
+            </button>
+          </div>
         </div>
       </header>
 

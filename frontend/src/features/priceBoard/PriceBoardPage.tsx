@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { NavLink } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, seedLocalPriceCache, type LocalPriceCache } from '../../data/local/db';
 import { AudioButton } from '../../components/AudioButton';
-import { TrendingUp, TrendingDown, Minus, ShieldCheck, Store, MapPin } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, ShieldCheck, Store, MapPin, Cpu, ArrowRight } from 'lucide-react';
 
 export const PriceBoardPage: React.FC = () => {
   const { t } = useTranslation();
@@ -45,6 +46,23 @@ export const PriceBoardPage: React.FC = () => {
           ताज़ा दर
         </div>
       </div>
+
+      {/* Differentiator Feature 12 Promo Card: Critical Minerals Impact Dashboard */}
+      <NavLink
+        to="/minerals"
+        className="bg-stone-900 text-white rounded-card p-3.5 border border-stone-800 shadow-soft flex items-center justify-between hover:bg-stone-850 transition-colors group"
+      >
+        <div className="flex items-center space-x-3">
+          <div className="w-9 h-9 rounded-xl bg-amber-500 text-stone-900 flex items-center justify-center font-bold">
+            <Cpu size={20} />
+          </div>
+          <div>
+            <div className="text-xs font-bold text-amber-400">Critical Minerals Impact</div>
+            <div className="text-[11px] text-stone-300 font-medium">Lithium, Cobalt & Neodymium Recovery</div>
+          </div>
+        </div>
+        <ArrowRight size={18} className="text-amber-400 group-hover:translate-x-1 transition-transform" />
+      </NavLink>
 
       {/* Category Price List */}
       <div className="space-y-3">

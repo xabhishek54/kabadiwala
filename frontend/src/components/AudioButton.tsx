@@ -1,5 +1,5 @@
-import React from 'react';
-import { Volume2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Volume2, VolumeX } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface AudioButtonProps {
@@ -10,10 +10,25 @@ interface AudioButtonProps {
 
 export const AudioButton: React.FC<AudioButtonProps> = ({ textToSpeak, className = '', size = 20 }) => {
   const { i18n } = useTranslation();
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   const speak = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!('speechSynthesis' in window)) return;
+
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
 
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(textToSpeak);
@@ -24,6 +39,11 @@ export const AudioButton: React.FC<AudioButtonProps> = ({ textToSpeak, className
     };
     utterance.lang = langMap[i18n.language] || 'hi-IN';
     utterance.rate = 0.9;
+
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
     window.speechSynthesis.speak(utterance);
   };
 
@@ -31,10 +51,14 @@ export const AudioButton: React.FC<AudioButtonProps> = ({ textToSpeak, className
     <button
       type="button"
       onClick={speak}
-      aria-label="Listen audio"
-      className={`tap-target rounded-full bg-brand-50 hover:bg-brand-100 text-brand-700 p-2 border border-brand-500/20 active:scale-95 transition-transform ${className}`}
+      aria-label={isSpeaking ? 'Stop listening' : 'Listen audio'}
+      className={`tap-target relative inline-flex items-center justify-center rounded-full p-2.5 transition-all duration-200 ${
+        isSpeaking
+          ? 'bg-amber-500 text-white shadow-md ring-4 ring-amber-200 animate-pulse'
+          : 'bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-500/20 active:scale-95'
+      } ${className}`}
     >
-      <Volume2 size={size} />
+      {isSpeaking ? <VolumeX size={size} /> : <Volume2 size={size} />}
     </button>
   );
 };

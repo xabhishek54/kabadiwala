@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.recycler import Recycler
 from app.models.collector import Collector
+from app.models.material import Material
+from app.models.transaction import Transaction
 from app.models.collection_authorization import CollectionAuthorization
 from app.models.enums import AuthorizationStatus, CollectionAuthStatus
 from app.schemas.authorization import PublicVerifyResponse
@@ -11,7 +13,36 @@ router = APIRouter(prefix="/verify", tags=["verify"])
 
 @router.get("/{identifier}", response_model=PublicVerifyResponse)
 def public_verify_lookup(identifier: str, db: Session = Depends(get_db)):
-    # 1. Try finding as a Recycler ID or Ref No
+    # 1. Try finding as a Lot ID
+    material = db.query(Material).filter(Material.lot_id == identifier).first()
+    if material:
+        tx = db.query(Transaction).filter(Transaction.lot_id == material.lot_id).first()
+        collector = db.query(Collector).filter(Collector.collector_id == material.collector_id).first()
+        active_auth = db.query(CollectionAuthorization).filter(
+            CollectionAuthorization.collector_id == material.collector_id,
+            CollectionAuthorization.status == CollectionAuthStatus.active
+        ).first() if material.collector_id else None
+
+        return PublicVerifyResponse(
+            type="lot",
+            id=material.lot_id,
+            name_or_title=f"{material.material_category.value} ({material.approx_weight_kg}kg)",
+            verification_status=tx.status.value if tx else "draft",
+            is_valid=tx.payment_status.value == "paid" if tx else False,
+            details={
+                "category": material.material_category.value,
+                "sub_category": material.sub_category,
+                "approx_weight_kg": material.approx_weight_kg,
+                "condition": material.condition.value,
+                "estimated_value": material.estimated_value,
+                "collector_locality": collector.operating_locality if collector else "Pune",
+                "is_authorized_agent": active_auth is not None,
+                "authorized_by_recycler": active_auth.recycler.name if active_auth else None,
+                "created_at": material.created_at.isoformat() if material.created_at else None,
+            }
+        )
+
+    # 2. Try finding as a Recycler ID or Ref No
     recycler = db.query(Recycler).filter(
         (Recycler.recycler_id == identifier) | (Recycler.authorization_ref_no == identifier)
     ).first()
@@ -32,7 +63,7 @@ def public_verify_lookup(identifier: str, db: Session = Depends(get_db)):
             }
         )
 
-    # 2. Try finding as a Collection Authorization ID
+    # 3. Try finding as a Collection Authorization ID
     auth_obj = db.query(CollectionAuthorization).filter(
         CollectionAuthorization.authorization_id == identifier
     ).first()
@@ -55,7 +86,7 @@ def public_verify_lookup(identifier: str, db: Session = Depends(get_db)):
             }
         )
 
-    # 3. Try finding as a Collector ID with active authorizations
+    # 4. Try finding as a Collector ID with active authorizations
     collector = db.query(Collector).filter(Collector.collector_id == identifier).first()
     if collector:
         active_auth = db.query(CollectionAuthorization).filter(

@@ -35,6 +35,13 @@ export default defineConfig({
       }
     })
   ],
+  // Output Web Workers as ES module chunks — required for ?worker imports with code-splitting builds
+  build: {
+    target: 'esnext',
+  },
+  worker: {
+    format: 'es',
+  },
   test: {
     globals: true,
     environment: 'jsdom',

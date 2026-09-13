@@ -1,26 +1,17 @@
 from typing import List, Optional
-import math
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.recycler import Recycler
 from app.models.enums import AuthorizationStatus, MaterialCategory
 from app.schemas.recycler import RecyclerCreate, RecyclerResponse, RecyclerMatchResponse
+from app.services.matching_engine import haversine_distance, compute_blended_matching_score
 
 router = APIRouter(prefix="/recyclers", tags=["recyclers"])
-
-def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    R = 6371.0  # Earth radius in kilometers
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return R * c
 
 @router.post("", response_model=RecyclerResponse, status_code=status.HTTP_201_CREATED)
 def register_recycler(payload: RecyclerCreate, db: Session = Depends(get_db)):
     recycler_data = payload.dict(exclude_unset=True)
-    # New self-registered recyclers start as pending
     recycler = Recycler(**recycler_data)
     db.add(recycler)
     db.commit()
@@ -66,6 +57,7 @@ def match_recyclers(
     category: MaterialCategory,
     lat: float,
     lng: float,
+    alpha: float = 0.70,
     w1: float = 0.40,
     w2: float = 0.35,
     w3: float = 0.15,
@@ -87,7 +79,7 @@ def match_recyclers(
         if category_str in rates_dict:
             all_rates.append(rates_dict[category_str])
         elif category_str in (r.materials_accepted or []):
-            all_rates.append(50.0)  # default nominal rate if accepted but unlisted
+            all_rates.append(50.0)
 
     max_rate = max(all_rates) if all_rates else 1.0
 
@@ -100,19 +92,23 @@ def match_recyclers(
         if dist > recycler.service_radius_km * 2.0:
             continue
 
-        # Proximity score decay
-        proximity_score = max(0.0, 1.0 - (dist / max(1.0, recycler.service_radius_km)))
         rate_val = (recycler.offered_rates or {}).get(category_str, 50.0)
-        rate_score = min(1.0, rate_val / max(1.0, max_rate))
-        pickup_score = 1.0 if recycler.pickup_available else 0.0
-        auth_score = 1.0  # Already verified
 
-        score = (w1 * proximity_score) + (w2 * rate_score) + (w3 * pickup_score) + (w4 * auth_score)
+        # Compute blended score (70% deterministic + 30% ML logistic regression completion probability)
+        blended_score, s_det, p_comp = compute_blended_matching_score(
+            offered_price=rate_val,
+            max_rate=max_rate,
+            distance_km=dist,
+            max_distance_km=recycler.service_radius_km,
+            pickup_available=recycler.pickup_available,
+            alpha=alpha,
+            w1=w1, w2=w2, w3=w3, w4=w4
+        )
 
         matches.append(RecyclerMatchResponse(
             recycler=RecyclerResponse.from_orm(recycler),
             distance_km=round(dist, 2),
-            score=round(score, 4),
+            score=blended_score,
             rate_for_category=rate_val,
             pickup_available=recycler.pickup_available
         ))

@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type LocalTransaction } from '../../data/local/db';
 import { jsPDF } from 'jspdf';
-import { Wallet, Clock, Share2, CheckCircle, Package } from 'lucide-react';
+import { Wallet, Clock, Share2, CheckCircle, Package, Download, Check } from 'lucide-react';
 
 export const LedgerPage: React.FC = () => {
   const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
 
   const materials = useLiveQuery(() => db.materials.toArray(), []) || [];
   const transactions = useLiveQuery(() => db.transactions.toArray(), []) || [];
@@ -30,15 +31,16 @@ export const LedgerPage: React.FC = () => {
   const exportPDF = () => {
     const doc = new jsPDF();
     doc.setFontSize(18);
-    doc.text('Kabadiwala Connect — Earnings Statement', 14, 20);
+    doc.text('Kabadiwala Connect — Verified Income Statement', 14, 20);
 
     doc.setFontSize(11);
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, 30);
-    doc.text(`Total Earned: RS ${totalEarned}`, 14, 38);
-    doc.text(`Pending Dues: RS ${totalPending}`, 14, 46);
-    doc.text('------------------------------------------------', 14, 54);
+    doc.text(`Generated Date: ${new Date().toLocaleDateString('en-IN')}`, 14, 30);
+    doc.text(`Total Earned: RS ${totalEarned.toLocaleString('en-IN')}`, 14, 38);
+    doc.text(`Pending Dues: RS ${totalPending.toLocaleString('en-IN')}`, 14, 46);
+    doc.text(`Total Verified Lots: ${materials.length}`, 14, 54);
+    doc.text('------------------------------------------------------------', 14, 62);
 
-    let y = 64;
+    let y = 72;
     materials.forEach((mat, idx) => {
       const tx = txMap.get(mat.lot_id);
       const val = tx?.final_sale_value || tx?.quoted_price || mat.estimated_value || 0;
@@ -54,7 +56,28 @@ export const LedgerPage: React.FC = () => {
       }
     });
 
-    doc.save('Earnings_History.pdf');
+    doc.save('Kabadiwala_Earnings_Statement.pdf');
+  };
+
+  const handleShare = async () => {
+    const shareText = `💰 Kabadiwala Connect — My Verified Earnings\n\nTotal Earned: ₹${totalEarned.toLocaleString('en-IN')}\nTotal Lots Traced: ${materials.length}\nDate: ${new Date().toLocaleDateString('en-IN')}\n\nTracked via Kabadiwala Connect PWA — Formalizing E-Waste Collection`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'My E-Waste Earnings Statement',
+          text: shareText,
+          url: window.location.href,
+        });
+        return;
+      } catch {
+        // Fallback to copy if user cancels or share fails
+      }
+    }
+
+    await navigator.clipboard.writeText(shareText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
   };
 
   return (
@@ -66,7 +89,7 @@ export const LedgerPage: React.FC = () => {
             <Wallet size={16} />
             <span>{t('ledger.earned')}</span>
           </div>
-          <div className="text-2xl font-black">₹{totalEarned}</div>
+          <div className="text-2xl font-black">₹{totalEarned.toLocaleString('en-IN')}</div>
         </div>
 
         <div className="bg-amber-500 text-white rounded-card p-4 shadow-soft">
@@ -74,19 +97,30 @@ export const LedgerPage: React.FC = () => {
             <Clock size={16} />
             <span>{t('ledger.pending')}</span>
           </div>
-          <div className="text-2xl font-black">₹{totalPending}</div>
+          <div className="text-2xl font-black">₹{totalPending.toLocaleString('en-IN')}</div>
         </div>
       </div>
 
-      {/* Differentiator Feature 9: Financial Identity Export */}
-      <button
-        type="button"
-        onClick={exportPDF}
-        className="w-full bg-surface-card border border-stone-300 hover:border-brand-500 text-stone-800 font-bold py-3 px-4 rounded-xl flex items-center justify-center space-x-2 shadow-soft active:scale-95 transition-all"
-      >
-        <Share2 size={18} className="text-brand-600" />
-        <span>{t('ledger.exportPDF')}</span>
-      </button>
+      {/* Differentiator Feature 9: Financial Identity Export & Native Web Share */}
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={exportPDF}
+          className="tap-target bg-surface-card border border-stone-300 hover:border-brand-500 text-stone-800 font-bold py-3 px-3 rounded-xl flex items-center justify-center space-x-1.5 shadow-soft active:scale-95 transition-all text-xs"
+        >
+          <Download size={16} className="text-brand-600" />
+          <span>{t('ledger.exportPDF')}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={handleShare}
+          className="tap-target bg-brand-600 hover:bg-brand-700 text-white font-bold py-3 px-3 rounded-xl flex items-center justify-center space-x-1.5 shadow-soft active:scale-95 transition-all text-xs"
+        >
+          {copied ? <Check size={16} /> : <Share2 size={16} />}
+          <span>{copied ? 'Copied ✓' : 'Share WhatsApp'}</span>
+        </button>
+      </div>
 
       {/* Transactions List */}
       <div className="space-y-3">
@@ -121,7 +155,7 @@ export const LedgerPage: React.FC = () => {
                 </div>
 
                 <div className="text-right">
-                  <div className="text-base font-black text-stone-900">₹{val}</div>
+                  <div className="text-base font-black text-stone-900">₹{val.toLocaleString('en-IN')}</div>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                     isPaid ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                   }`}>
