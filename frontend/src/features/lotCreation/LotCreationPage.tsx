@@ -1,0 +1,342 @@
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { Camera, CheckCircle2, ArrowRight, ArrowLeft, Info } from 'lucide-react';
+import imageCompression from 'browser-image-compression';
+import { db } from '../../data/local/db';
+import { AudioButton } from '../../components/AudioButton';
+
+export const LotCreationPage: React.FC = () => {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+
+  const [step, setStep] = useState<number>(1);
+  const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
+  const [category, setCategory] = useState<string>('PCB');
+  const [weightKg, setWeightKg] = useState<number>(5.0);
+  const [condition, setCondition] = useState<'intact' | 'damaged' | 'stripped'>('intact');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const categories = [
+    { id: 'PCB', icon: '🔌', label: t('categories.PCB') },
+    { id: 'BATTERY', icon: '🔋', label: t('categories.BATTERY') },
+    { id: 'CABLE', icon: '🧵', label: t('categories.CABLE') },
+    { id: 'LCD_PANEL', icon: '🖥️', label: t('categories.LCD_PANEL') },
+    { id: 'CRT', icon: '📺', label: t('categories.CRT') },
+    { id: 'MOTOR_MAGNET', icon: '🧲', label: t('categories.MOTOR_MAGNET') },
+    { id: 'MIXED_PLASTIC', icon: '♻️', label: t('categories.MIXED_PLASTIC') },
+  ];
+
+  const categoryBasePrices: Record<string, number> = {
+    PCB: 260.0,
+    BATTERY: 90.0,
+    CABLE: 150.0,
+    LCD_PANEL: 110.0,
+    CRT: 40.0,
+    MOTOR_MAGNET: 70.0,
+    MIXED_PLASTIC: 25.0,
+  };
+
+  const conditionMultipliers: Record<string, number> = {
+    intact: 1.0,
+    damaged: 0.7,
+    stripped: 0.4,
+  };
+
+  const basePricePerKg = categoryBasePrices[category] || 100.0;
+  const conditionMult = conditionMultipliers[condition] || 1.0;
+  const effectivePricePerKg = basePricePerKg * conditionMult;
+  const estimatedTotal = Math.round(weightKg * effectivePricePerKg);
+
+  const handlePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const options = {
+        maxSizeMB: 0.5,
+        maxWidthOrHeight: 800,
+        useWebWorker: true,
+      };
+      const compressedFile = await imageCompression(file, options);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPhotoDataUrl(reader.result as string);
+        setStep(2);
+      };
+      reader.readAsDataURL(compressedFile);
+    } catch (error) {
+      console.error('Image compression failed', error);
+    }
+  };
+
+  const handleSaveLot = async () => {
+    setIsSaving(true);
+    const lotId = crypto.randomUUID();
+    const collectorId = localStorage.getItem('kabadiwala_collector_id') || 'col-demo-101';
+    const createdAt = new Date().toISOString();
+
+    // 1. Save to local IndexedDB materials table
+    await db.materials.put({
+      lot_id: lotId,
+      material_category: category,
+      sub_category: category,
+      image_ref: photoDataUrl || undefined,
+      approx_weight_kg: weightKg,
+      condition,
+      source_type: 'household',
+      estimated_value: estimatedTotal,
+      collector_id: collectorId,
+      created_at: createdAt,
+    });
+
+    // 2. Save baseline local transaction
+    await db.transactions.put({
+      lot_id: lotId,
+      collector_id: collectorId,
+      status: 'draft',
+      quoted_price: estimatedTotal,
+      payment_method: 'cash',
+      payment_status: 'unpaid',
+      created_at: createdAt,
+      updated_at: createdAt,
+    });
+
+    // 3. Queue in local sync outbox for background push
+    await db.syncOutbox.add({
+      client_uuid: lotId,
+      entity_type: 'material',
+      action: 'upsert',
+      payload: {
+        material_category: category,
+        sub_category: category,
+        approx_weight_kg: weightKg,
+        condition,
+        estimated_value: estimatedTotal,
+        image_ref: photoDataUrl || undefined,
+      },
+      created_at: createdAt,
+      synced: false,
+    });
+
+    setIsSaving(false);
+    navigate('/ledger');
+  };
+
+  const breakdownAudioText = `${t(`categories.${category}`)}, ${weightKg} किलो, अनुमानित मूल्य ${estimatedTotal} रुपये।`;
+
+  return (
+    <div className="pb-24 pt-4 px-4 max-w-md mx-auto space-y-4">
+      {/* Step Header */}
+      <div className="flex items-center justify-between bg-surface-card p-3 rounded-card border border-surface-border shadow-soft">
+        <button
+          type="button"
+          onClick={() => setStep(Math.max(1, step - 1))}
+          disabled={step === 1}
+          className="text-stone-500 disabled:opacity-30 tap-target"
+        >
+          <ArrowLeft size={20} />
+        </button>
+        <span className="font-bold text-stone-900 text-sm">
+          {t('lotCreation.title')} ({step}/4)
+        </span>
+        <div className="w-8" />
+      </div>
+
+      {/* Step 1: Camera Photo Capture */}
+      {step === 1 && (
+        <div className="bg-surface-card rounded-card p-6 border border-surface-border shadow-soft text-center space-y-4">
+          <div className="w-20 h-20 mx-auto rounded-full bg-brand-50 border-2 border-brand-500/30 flex items-center justify-center text-brand-600 shadow-sm">
+            <Camera size={36} />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-stone-900">{t('lotCreation.takePhoto')}</h3>
+            <p className="text-xs text-stone-500 mt-1">सामान की फोटो खींचें (Photo of e-waste)</p>
+          </div>
+
+          {photoDataUrl && (
+            <div className="relative rounded-xl overflow-hidden border border-stone-200 shadow-inner max-h-48">
+              <img src={photoDataUrl} alt="Captured Lot" className="w-full h-full object-cover" />
+            </div>
+          )}
+
+          <label className="block w-full bg-brand-600 hover:bg-brand-700 active:scale-95 text-white font-bold py-3.5 px-4 rounded-xl text-center shadow-md cursor-pointer transition-all">
+            <span>{photoDataUrl ? 'दोबारा फोटो लें' : 'कैमरा खोलें'}</span>
+            <input type="file" accept="image/*" capture="environment" onChange={handlePhotoCapture} className="hidden" />
+          </label>
+
+          {photoDataUrl && (
+            <button
+              type="button"
+              onClick={() => setStep(2)}
+              className="w-full bg-stone-900 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center space-x-2 shadow-sm"
+            >
+              <span>आगे बढ़ें</span>
+              <ArrowRight size={18} />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Step 2: Category Picker */}
+      {step === 2 && (
+        <div className="space-y-3">
+          <h3 className="font-bold text-stone-900 text-base">{t('lotCreation.selectCategory')}</h3>
+          <div className="grid grid-cols-2 gap-2.5">
+            {categories.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setCategory(c.id)}
+                className={`p-3.5 rounded-2xl border text-left flex items-center space-x-3 transition-all ${
+                  category === c.id
+                    ? 'bg-brand-50 border-brand-500 text-brand-900 shadow-sm ring-2 ring-brand-500/20'
+                    : 'bg-surface-card border-surface-border text-stone-800 hover:bg-stone-50'
+                }`}
+              >
+                <span className="text-2xl">{c.icon}</span>
+                <span className="font-bold text-sm leading-tight">{c.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setStep(3)}
+            className="w-full mt-4 bg-brand-600 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center space-x-2 shadow-md active:scale-95"
+          >
+            <span>आगे बढ़ें (वजन दर्ज करें)</span>
+            <ArrowRight size={18} />
+          </button>
+        </div>
+      )}
+
+      {/* Step 3: Weight & Condition Selection */}
+      {step === 3 && (
+        <div className="bg-surface-card rounded-card p-5 border border-surface-border shadow-soft space-y-5">
+          {/* Weight */}
+          <div>
+            <label className="block font-bold text-stone-900 text-sm mb-2">{t('lotCreation.enterWeight')}</label>
+            <div className="flex items-center space-x-2">
+              <input
+                type="number"
+                step="0.5"
+                min="0.5"
+                max="500"
+                value={weightKg}
+                onChange={(e) => setWeightKg(parseFloat(e.target.value) || 1.0)}
+                className="w-full text-2xl font-black p-3 rounded-xl border border-stone-300 text-stone-900 bg-stone-50 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+              <span className="text-lg font-bold text-stone-600">किग्रा (kg)</span>
+            </div>
+
+            {/* Quick Weight Selectors */}
+            <div className="flex space-x-2 mt-2.5">
+              {[1, 5, 10, 20].map((w) => (
+                <button
+                  key={w}
+                  type="button"
+                  onClick={() => setWeightKg(w)}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                    weightKg === w ? 'bg-stone-900 text-white border-stone-900' : 'bg-surface-muted text-stone-700 border-stone-200'
+                  }`}
+                >
+                  {w} kg
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Condition */}
+          <div>
+            <label className="block font-bold text-stone-900 text-sm mb-2">{t('lotCreation.conditionLabel')}</label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { key: 'intact', label: t('lotCreation.intact'), icon: '✨' },
+                { key: 'damaged', label: t('lotCreation.damaged'), icon: '⚠️' },
+                { key: 'stripped', label: t('lotCreation.stripped'), icon: '🔧' },
+              ].map((cond) => (
+                <button
+                  key={cond.key}
+                  type="button"
+                  onClick={() => setCondition(cond.key as any)}
+                  className={`p-2.5 rounded-xl border text-center transition-all ${
+                    condition === cond.key
+                      ? 'bg-amber-50 border-amber-500 text-amber-900 font-bold ring-2 ring-amber-500/20'
+                      : 'bg-stone-50 border-stone-200 text-stone-700'
+                  }`}
+                >
+                  <div className="text-lg">{cond.icon}</div>
+                  <div className="text-xs mt-1">{cond.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setStep(4)}
+            className="w-full bg-brand-600 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center space-x-2 shadow-md active:scale-95"
+          >
+            <span>कीमत का विवरण देखें</span>
+            <ArrowRight size={18} />
+          </button>
+        </div>
+      )}
+
+      {/* Step 4: Explainable Price Breakdown & Confirm */}
+      {step === 4 && (
+        <div className="bg-surface-card rounded-card p-5 border border-surface-border shadow-soft space-y-4">
+          <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+            <div>
+              <h3 className="font-bold text-stone-900 text-lg">{t('lotCreation.estimateTitle')}</h3>
+              <p className="text-xs text-stone-500">{t(`categories.${category}`)}</p>
+            </div>
+            <AudioButton textToSpeak={breakdownAudioText} size={20} />
+          </div>
+
+          {/* Big Price Estimate Display */}
+          <div className="bg-brand-50 border border-brand-200/70 rounded-2xl p-4 text-center">
+            <span className="text-xs font-semibold text-brand-800 uppercase tracking-wider block">अनुमानित कुल राशि</span>
+            <span className="text-3xl font-black text-brand-700">₹{estimatedTotal}</span>
+            <span className="text-xs text-brand-600 block mt-0.5">(₹{Math.round(estimatedTotal * 0.95)} — ₹{Math.round(estimatedTotal * 1.05)})</span>
+          </div>
+
+          {/* Differentiator Feature 6a: Explainable Price Breakdown */}
+          <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 space-y-2 text-xs text-stone-700">
+            <div className="font-bold text-stone-900 text-sm flex items-center space-x-1.5 mb-1">
+              <Info size={14} className="text-brand-600" />
+              <span>{t('lotCreation.priceBreakdown')}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>स्थानिक दर (Base Price):</span>
+              <span className="font-semibold">₹{basePricePerKg} /kg</span>
+            </div>
+            <div className="flex justify-between">
+              <span>कुल वजन (Weight):</span>
+              <span className="font-semibold">{weightKg} kg</span>
+            </div>
+            <div className="flex justify-between">
+              <span>स्थिति समायोजन (Condition):</span>
+              <span className="font-semibold">{condition} ({Math.round(conditionMult * 100)}%)</span>
+            </div>
+            <div className="border-t border-stone-200 pt-2 flex justify-between font-bold text-stone-900 text-sm">
+              <span>गणना:</span>
+              <span>₹{basePricePerKg} × {weightKg}kg × {conditionMult} = ₹{estimatedTotal}</span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            disabled={isSaving}
+            onClick={handleSaveLot}
+            className="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center space-x-2 shadow-lg active:scale-95 transition-all"
+          >
+            <CheckCircle2 size={20} />
+            <span>{isSaving ? 'सुरक्षित हो रहा है...' : t('lotCreation.saveDraft')}</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};

@@ -1,0 +1,59 @@
+{
+  "appName": "Kabadiwala Connect",
+  "tagline": "Sell e-waste, get transparent prices",
+  "nav": {
+    "prices": "Price Board",
+    "createLot": "New Lot",
+    "ledger": "Ledger",
+    "safety": "Safety"
+  },
+  "priceBoard": {
+    "title": "Today's Market Prices",
+    "district": "Pune District",
+    "formalLabel": "Verified Recycler",
+    "informalLabel": "Local Buyer",
+    "trendUp": "Price rising",
+    "trendDown": "Price falling",
+    "trendFlat": "Price stable",
+    "listen": "Listen",
+    "audioPrice": "Today's price for {{category}} is {{price}} rupees per kg."
+  },
+  "lotCreation": {
+    "title": "Create Digital Lot",
+    "takePhoto": "Take Photo",
+    "selectCategory": "Select Category",
+    "enterWeight": "Weight (in kg)",
+    "conditionLabel": "Material Condition",
+    "intact": "Intact / Complete",
+    "damaged": "Damaged",
+    "stripped": "Stripped / Dismantled",
+    "estimateTitle": "Estimated Value",
+    "priceBreakdown": "Price Breakdown",
+    "saveDraft": "Save Lot (Offline)",
+    "success": "Lot created successfully!"
+  },
+  "categories": {
+    "PCB": "Circuit Board (PCB)",
+    "BATTERY": "Battery / Cell",
+    "CABLE": "Copper Cable",
+    "LCD_PANEL": "LCD Screen",
+    "CRT": "Old TV (CRT)",
+    "MOTOR_MAGNET": "Motor / Magnet",
+    "MIXED_PLASTIC": "Plastic Body"
+  },
+  "ledger": {
+    "title": "My Earnings Ledger",
+    "earned": "Total Earned",
+    "pending": "Pending Dues",
+    "transactions": "Transactions",
+    "paid": "Paid",
+    "unpaid": "Pending",
+    "exportPDF": "Share Earnings PDF"
+  },
+  "safety": {
+    "title": "Safety Guidance",
+    "batteryTip": "Never crush or burn batteries, fire hazard!",
+    "crtTip": "Handle CRT glass carefully to avoid implosion, wear mask!",
+    "cableTip": "Do not burn cables in the open, toxic fumes are hazardous!"
+  }
+}
