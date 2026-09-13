@@ -1,0 +1,11 @@
+material_category,sub_category,location_district,buying_price,quoted_price,unit,market_range_low,market_range_high,source,channel
+PCB,Motherboard High Grade,Pune,260.0,270.0,per_kg,240.0,280.0,manual_admin_entry,formal
+PCB,Motherboard High Grade,Pune,210.0,220.0,per_kg,200.0,230.0,manual_admin_entry,informal
+BATTERY,Lithium-Ion Pack,Pune,90.0,95.0,per_kg,80.0,100.0,manual_admin_entry,formal
+BATTERY,Lithium-Ion Pack,Pune,75.0,80.0,per_kg,70.0,85.0,manual_admin_entry,informal
+CABLE,Copper Heavy Duty,Pune,150.0,160.0,per_kg,140.0,170.0,manual_admin_entry,formal
+CABLE,Copper Heavy Duty,Pune,130.0,135.0,per_kg,120.0,140.0,manual_admin_entry,informal
+LCD_PANEL,Monitor Screen,Pune,110.0,120.0,per_kg,95.0,130.0,manual_admin_entry,formal
+CRT,Television Glass,Pune,40.0,45.0,per_kg,30.0,50.0,manual_admin_entry,formal
+MOTOR_MAGNET,Copper Stator,Pune,70.0,75.0,per_kg,60.0,80.0,manual_admin_entry,formal
+MIXED_PLASTIC,E-Waste Casing,Pune,25.0,28.0,per_kg,20.0,30.0,manual_admin_entry,formal

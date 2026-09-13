@@ -1,0 +1,62 @@
+# Markdown policy
+*.md
+!README.md
+
+# Environment / Secrets
+.env
+.env.*
+!.env.example
+
+# Node / Frontend
+node_modules/
+dist/
+dist-ssr/
+.vite/
+.output/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python / Backend
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# Testing & Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.vitest_cache/
+coverage/
+
+# Local databases & storage
+*.sqlite
+*.sqlite3
+*.db
+minio_data/
+uploads/
+
+# ML training checkpoints (shipped TF.js models in frontend/public/models/ ARE tracked)
+ml/checkpoints/
+ml/runs/
+ml/*.pkl
+ml/*.h5
+ml/*.pt
+ml/*.onnx
+
+# IDE & OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
