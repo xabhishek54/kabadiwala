@@ -1,17 +1,50 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { IndianRupee, PlusCircle, BookOpen, ShieldAlert, WifiOff, Globe, Factory, User, LogOut, MapPin, Tag } from 'lucide-react';
+import {
+  Home, LayoutDashboard, Package, IndianRupee, MapPin, ShieldAlert, User,
+  WifiOff, Factory, Tag, BookOpen, Search, ChevronDown, Leaf
+} from 'lucide-react';
+
+/* ─── Sidebar nav item data matching reference image ─── */
+const collectorNavItems = [
+  { to: '/home', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/lots', label: 'My Lots', icon: Package },
+  { to: '/prices', label: 'Price Board', icon: IndianRupee },
+  { to: '/recyclers', label: 'Find Recyclers', icon: Search },
+  { to: '/ledger', label: 'Earnings & Payments', icon: IndianRupee },
+  { to: '/safety', label: 'Safety Guide', icon: ShieldAlert },
+  { to: '/profile', label: 'My Profile', icon: User },
+];
+
+const recyclerNavItems = [
+  { to: '/recycler', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/recycler/rates', label: 'My Buying Rates', icon: Tag },
+  { to: '/admin/anomalies', label: 'Anomaly Engine', icon: ShieldAlert },
+  { to: '/verify', label: 'Verify Hash', icon: BookOpen },
+  { to: '/profile', label: 'My Profile', icon: User },
+];
+
+/* Bottom nav tabs for collector */
+const collectorBottomTabs = [
+  { to: '/home', label: 'Home', icon: Home, end: true },
+  { to: '/lots', label: 'Lots', icon: Package },
+  { to: '/recyclers', label: 'Recyclers', icon: MapPin },
+  { to: '/profile', label: 'Profile', icon: User },
+];
+
+/* Bottom nav tabs for recycler */
+const recyclerBottomTabs = [
+  { to: '/recycler', label: 'Queue', icon: Factory, end: true },
+  { to: '/recycler/rates', label: 'Rates', icon: Tag },
+  { to: '/admin/anomalies', label: 'Alerts', icon: ShieldAlert },
+  { to: '/profile', label: 'Profile', icon: User },
+];
 
 export const Navigation: React.FC = () => {
-  const { t, i18n } = useTranslation();
+  const { i18n } = useTranslation();
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
-  const [user, setUser] = useState<{ name: string; role: string } | null>(null);
-  const [district, setDistrict] = useState<string>(
-    localStorage.getItem('kabadiwala_district') || 'Pune'
-  );
-
-  const districts = ['Pune', 'Pimpri-Chinchwad', 'Mumbai', 'Thane', 'Nagpur', 'Nashik'];
+  const [user, setUser] = useState<{ name: string; role: string; id?: string } | null>(null);
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -21,17 +54,10 @@ export const Navigation: React.FC = () => {
 
     const checkUser = () => {
       const raw = localStorage.getItem('kabadiwala_user');
-      if (raw) {
-        try { setUser(JSON.parse(raw)); } catch { setUser(null); }
-      } else {
-        setUser(null);
-      }
-      const savedDist = localStorage.getItem('kabadiwala_district');
-      if (savedDist) setDistrict(savedDist);
+      try { setUser(raw ? JSON.parse(raw) : null); } catch { setUser(null); }
     };
     checkUser();
     window.addEventListener('storage', checkUser);
-
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
@@ -44,332 +70,99 @@ export const Navigation: React.FC = () => {
     localStorage.setItem('kabadiwala_lang', lang);
   };
 
-  const handleDistrictChange = (d: string) => {
-    setDistrict(d);
-    localStorage.setItem('kabadiwala_district', d);
-    window.dispatchEvent(new Event('district_changed'));
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('kabadiwala_user');
-    window.location.href = '/login';
-  };
-
   const isRecycler = user?.role === 'recycler';
+  const navItems = isRecycler ? recyclerNavItems : collectorNavItems;
+  const bottomTabs = isRecycler ? recyclerBottomTabs : collectorBottomTabs;
 
   return (
     <>
-      {/* Top Header - Fixed & Desktop Responsive */}
-      <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-stone-200/80 px-4 h-14 flex items-center shadow-xs shrink-0">
-        <div className="max-w-6xl w-full mx-auto flex items-center justify-between">
-          {/* Logo Icon Only */}
-          <NavLink to={isRecycler ? "/recycler" : "/"} className="flex items-center space-x-2 shrink-0 group" title={isRecycler ? 'Recycler Hub' : 'Kabadiwala Connect'}>
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-lg shadow-sm transition-transform group-hover:scale-105 ${
-              isRecycler ? 'bg-stone-900' : 'bg-brand-600'
-            }`}>
-              {isRecycler ? <Factory size={20} /> : 'K'}
+      {/* ═══════════════════════════════════════════
+          DESKTOP SIDEBAR (matches reference image)
+      ═══════════════════════════════════════════ */}
+      <aside className="sidebar">
+        <div>
+          {/* Logo Section */}
+          <div className="flex items-center gap-3 px-5 py-6">
+            <div className="w-10 h-10 rounded-full bg-[#16A34A] flex items-center justify-center text-white shrink-0 shadow-md">
+              <Leaf size={22} className="fill-white" />
             </div>
-          </NavLink>
-
-          {/* Desktop Navigation Links (Shown on Desktop md:flex) */}
-          <div className="hidden md:flex items-center space-x-1 border-l border-r border-stone-200 px-4 mx-4">
-            {isRecycler ? (
-              <>
-                <NavLink
-                  to="/recycler"
-                  end
-                  className={({ isActive }) =>
-                    `px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                      isActive ? 'bg-stone-900 text-white' : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
-                    }`
-                  }
-                >
-                  Incoming Queue
-                </NavLink>
-                <NavLink
-                  to="/recycler/rates"
-                  className={({ isActive }) =>
-                    `px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                      isActive ? 'bg-stone-900 text-white' : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
-                    }`
-                  }
-                >
-                  My Buying Rates
-                </NavLink>
-                <NavLink
-                  to="/admin/anomalies"
-                  className={({ isActive }) =>
-                    `px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                      isActive ? 'bg-stone-900 text-white' : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
-                    }`
-                  }
-                >
-                  Anomalies Engine
-                </NavLink>
-                <NavLink
-                  to="/verify"
-                  className={({ isActive }) =>
-                    `px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                      isActive ? 'bg-stone-900 text-white' : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
-                    }`
-                  }
-                >
-                  Verify Hash
-                </NavLink>
-              </>
-            ) : (
-              <>
-                <NavLink
-                  to="/"
-                  end
-                  className={({ isActive }) =>
-                    `px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                      isActive ? 'bg-brand-600 text-white shadow-xs' : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
-                    }`
-                  }
-                >
-                  {t('nav.prices')}
-                </NavLink>
-                <NavLink
-                  to="/create-lot"
-                  className={({ isActive }) =>
-                    `px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                      isActive ? 'bg-brand-600 text-white shadow-xs' : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
-                    }`
-                  }
-                >
-                  {t('nav.createLot')}
-                </NavLink>
-                <NavLink
-                  to="/ledger"
-                  className={({ isActive }) =>
-                    `px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                      isActive ? 'bg-brand-600 text-white shadow-xs' : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
-                    }`
-                  }
-                >
-                  {t('nav.ledger')}
-                </NavLink>
-                <NavLink
-                  to="/safety"
-                  className={({ isActive }) =>
-                    `px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                      isActive ? 'bg-brand-600 text-white shadow-xs' : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
-                    }`
-                  }
-                >
-                  {t('nav.safety')}
-                </NavLink>
-              </>
-            )}
+            <div className="min-w-0">
+              <div className="text-white font-extrabold text-base leading-tight truncate tracking-tight">EcoRecycle India</div>
+              <div className="text-emerald-300/80 text-[11px] font-medium truncate">Kabadiwala Connect</div>
+            </div>
           </div>
 
-          {/* Right Control Actions (District, Language, Logout) */}
-          <div className="flex items-center space-x-1.5 shrink-0 max-w-full overflow-hidden">
-            {/* Connectivity Status Badge (Compact on mobile) */}
-            <div className={`flex items-center space-x-1 px-2 py-1 rounded-xl text-[11px] font-bold border transition-colors ${
-              isOffline
-                ? 'bg-amber-50 text-amber-900 border-amber-300'
-                : 'bg-emerald-50 text-emerald-900 border-emerald-300'
-            }`}>
-              <span className={`w-2 h-2 rounded-full ${isOffline ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
-              <span className="hidden sm:inline">{isOffline ? 'Offline' : 'Synced'}</span>
+          {/* Offline warning if applicable */}
+          {isOffline && (
+            <div className="mx-4 mb-3 flex items-center gap-1.5 bg-amber-500/20 text-amber-300 text-[11px] font-semibold px-3 py-1.5 rounded-xl border border-amber-500/30">
+              <WifiOff size={12} />
+              <span>Offline Mode</span>
             </div>
-
-            {/* Location Selector Dropdown */}
-            <div className="flex items-center space-x-1 bg-amber-50 border border-amber-300/70 rounded-xl px-2 py-1 text-xs">
-              <MapPin size={13} className="text-amber-600 shrink-0" />
-              <select
-                value={district}
-                onChange={(e) => handleDistrictChange(e.target.value)}
-                className="bg-transparent text-stone-900 font-bold text-xs focus:outline-none cursor-pointer max-w-[75px] sm:max-w-none truncate"
-              >
-                {districts.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Language Switcher Compact Select */}
-            <div className="flex items-center bg-stone-100 px-1.5 py-1 rounded-xl border border-stone-200 text-xs font-bold text-stone-800">
-              <Globe size={13} className="text-stone-500 mr-1 hidden sm:block" />
-              <select
-                value={i18n.language}
-                onChange={(e) => changeLanguage(e.target.value)}
-                className="bg-transparent font-bold text-xs focus:outline-none cursor-pointer"
-              >
-                <option value="en">EN</option>
-                <option value="hi">हिं</option>
-                <option value="mr">मराठी</option>
-              </select>
-            </div>
-
-            {/* User Profile & Logout */}
-            <NavLink
-              to="/profile"
-              className="p-1.5 text-stone-700 hover:bg-stone-100 rounded-xl transition-colors hidden sm:flex items-center space-x-1.5"
-              title="Profile"
-            >
-              <User size={18} className="text-brand-600" />
-              {user && <span className="text-xs font-bold max-w-[90px] truncate">{user.name}</span>}
-            </NavLink>
-
-            {user && (
-              <button
-                type="button"
-                onClick={handleLogout}
-                title="Logout"
-                className="p-1.5 text-stone-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors"
-              >
-                <LogOut size={16} />
-              </button>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {/* Offline Status Indicator Banner */}
-      {isOffline && (
-        <div className="bg-amber-500 text-white text-xs font-semibold px-4 py-1.5 flex items-center justify-center space-x-2 shadow-inner">
-          <WifiOff size={14} />
-          <span>ऑफलाइन मोड — डेटा लोकल सुरक्षित है (Offline Mode)</span>
-        </div>
-      )}
-
-      {/* Bottom Navigation Bar (Fixed for Mobile Screens) */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 h-14 z-[100] bg-white/95 backdrop-blur-md border-t border-stone-200/90 shadow-elevated px-2 flex items-center">
-        <div className="max-w-md mx-auto grid grid-cols-5 gap-0.5">
-          {isRecycler ? (
-            <>
-              {/* RECYCLER MOBILE NAV ITEMS */}
-              <NavLink
-                to="/recycler"
-                end
-                className={({ isActive }) =>
-                  `flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl transition-all ${
-                    isActive ? 'bg-stone-900 text-white font-bold' : 'text-stone-500 hover:text-stone-800'
-                  }`
-                }
-              >
-                <Factory size={20} />
-                <span className="text-[10px] mt-0.5 font-medium">Queue</span>
-              </NavLink>
-
-              <NavLink
-                to="/recycler/rates"
-                className={({ isActive }) =>
-                  `flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl transition-all ${
-                    isActive ? 'bg-stone-900 text-white font-bold' : 'text-stone-500 hover:text-stone-800'
-                  }`
-                }
-              >
-                <Tag size={20} />
-                <span className="text-[10px] mt-0.5 font-medium">Rates</span>
-              </NavLink>
-
-              <NavLink
-                to="/admin/anomalies"
-                className={({ isActive }) =>
-                  `flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl transition-all ${
-                    isActive ? 'bg-stone-900 text-white font-bold' : 'text-stone-500 hover:text-stone-800'
-                  }`
-                }
-              >
-                <ShieldAlert size={20} />
-                <span className="text-[10px] mt-0.5 font-medium">Alerts</span>
-              </NavLink>
-
-              <NavLink
-                to="/verify"
-                className={({ isActive }) =>
-                  `flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl transition-all ${
-                    isActive ? 'bg-stone-900 text-white font-bold' : 'text-stone-500 hover:text-stone-800'
-                  }`
-                }
-              >
-                <BookOpen size={20} />
-                <span className="text-[10px] mt-0.5 font-medium">Verify</span>
-              </NavLink>
-
-              <NavLink
-                to="/profile"
-                className={({ isActive }) =>
-                  `flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl transition-all ${
-                    isActive ? 'bg-stone-900 text-white font-bold' : 'text-stone-500 hover:text-stone-800'
-                  }`
-                }
-              >
-                <User size={20} />
-                <span className="text-[10px] mt-0.5 font-medium">Profile</span>
-              </NavLink>
-            </>
-          ) : (
-            <>
-              {/* COLLECTOR MOBILE NAV ITEMS */}
-              <NavLink
-                to="/"
-                end
-                className={({ isActive }) =>
-                  `flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl transition-all ${
-                    isActive ? 'bg-brand-50 text-brand-600 font-bold' : 'text-stone-500 hover:text-stone-800'
-                  }`
-                }
-              >
-                <IndianRupee size={20} />
-                <span className="text-[10px] mt-0.5 font-medium">{t('nav.prices')}</span>
-              </NavLink>
-
-              <NavLink
-                to="/create-lot"
-                className={({ isActive }) =>
-                  `flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl transition-all ${
-                    isActive ? 'bg-brand-50 text-brand-600 font-bold' : 'text-stone-500 hover:text-stone-800'
-                  }`
-                }
-              >
-                <PlusCircle size={20} />
-                <span className="text-[10px] mt-0.5 font-medium">{t('nav.createLot')}</span>
-              </NavLink>
-
-              <NavLink
-                to="/ledger"
-                className={({ isActive }) =>
-                  `flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl transition-all ${
-                    isActive ? 'bg-brand-50 text-brand-600 font-bold' : 'text-stone-500 hover:text-stone-800'
-                  }`
-                }
-              >
-                <BookOpen size={20} />
-                <span className="text-[10px] mt-0.5 font-medium">{t('nav.ledger')}</span>
-              </NavLink>
-
-              <NavLink
-                to="/safety"
-                className={({ isActive }) =>
-                  `flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl transition-all ${
-                    isActive ? 'bg-brand-50 text-brand-600 font-bold' : 'text-stone-500 hover:text-stone-800'
-                  }`
-                }
-              >
-                <ShieldAlert size={20} />
-                <span className="text-[10px] mt-0.5 font-medium">{t('nav.safety')}</span>
-              </NavLink>
-
-              <NavLink
-                to="/profile"
-                className={({ isActive }) =>
-                  `flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl transition-all ${
-                    isActive ? 'bg-brand-50 text-brand-600 font-bold' : 'text-stone-500 hover:text-stone-800'
-                  }`
-                }
-              >
-                <User size={20} />
-                <span className="text-[10px] mt-0.5 font-medium">Profile</span>
-              </NavLink>
-            </>
           )}
+
+          {/* Main Nav Links */}
+          <nav className="px-3 py-2 space-y-1">
+            {navItems.map(({ to, label, icon: Icon, end }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all ${
+                    isActive
+                      ? 'bg-[#16A34A] text-white shadow-md'
+                      : 'text-stone-300 hover:text-white hover:bg-white/10'
+                  }`
+                }
+              >
+                <Icon size={18} className="shrink-0" />
+                <span>{label}</span>
+              </NavLink>
+            ))}
+          </nav>
+        </div>
+
+        {/* Bottom Language Selector matching reference image */}
+        <div className="p-4 border-t border-white/10">
+          <div className="relative">
+            <select
+              value={i18n.language}
+              onChange={e => changeLanguage(e.target.value)}
+              className="w-full bg-[#143628] hover:bg-white/10 border border-white/20 text-stone-200 text-xs font-bold rounded-xl px-3 py-2.5 appearance-none focus:outline-none cursor-pointer flex items-center justify-between"
+            >
+              <option value="hi" className="bg-[#1B3A2D] text-white">🌐 हिंदी</option>
+              <option value="en" className="bg-[#1B3A2D] text-white">🌐 English</option>
+              <option value="mr" className="bg-[#1B3A2D] text-white">🌐 मराठी</option>
+            </select>
+            <ChevronDown size={14} className="absolute right-3 top-3 text-stone-400 pointer-events-none" />
+          </div>
+        </div>
+      </aside>
+
+      {/* ═══════════════════════════════════════════
+          MOBILE BOTTOM NAV (matches mobile screen 1 in reference image)
+      ═══════════════════════════════════════════ */}
+      <nav className="bottom-nav">
+        <div className="grid grid-cols-4 h-full w-full max-w-md mx-auto items-center">
+          {bottomTabs.map(({ to, label, icon: Icon, end }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              className={({ isActive }) =>
+                `flex flex-col items-center justify-center py-1.5 transition-colors ${
+                  isActive ? 'text-[#16A34A] font-bold' : 'text-stone-400 font-semibold hover:text-stone-600'
+                }`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <Icon size={22} className={isActive ? 'text-[#16A34A]' : 'text-stone-400'} />
+                  <span className="text-[10px] mt-0.5 leading-none">{label}</span>
+                </>
+              )}
+            </NavLink>
+          ))}
         </div>
       </nav>
     </>

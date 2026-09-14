@@ -96,7 +96,7 @@ export const HandoverPage: React.FC = () => {
       handover_lat: gpsLocation?.lat,
       handover_lng: gpsLocation?.lng,
       updated_at: new Date().toISOString(),
-    });
+    } as any);
 
     // Queue in sync outbox
     await db.syncOutbox.add({

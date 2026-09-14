@@ -5,6 +5,7 @@ import {
   Camera, ShieldCheck, Loader2, AlertCircle, Copy, CheckCheck,
 } from 'lucide-react';
 import { signupCollector, linkFeriwalaToShop } from '../../data/remote/apiClient';
+import { LocationPickerModal } from '../../components/LocationPickerModal';
 
 export const CollectorOnboardingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -20,10 +21,24 @@ export const CollectorOnboardingPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  // After signup, assigned shopCode from backend
   const [assignedShopCode, setAssignedShopCode] = useState('');
   const [assignedCollectorId, setAssignedCollectorId] = useState('');
   const [copied, setCopied] = useState(false);
+
+  const [showMapPicker, setShowMapPicker] = useState(false);
+  const [exactAddress, setExactAddress] = useState(localStorage.getItem('kabadiwala_collector_address') || 'Kothrud, Pune');
+  const [collectorLat, setCollectorLat] = useState<number>(parseFloat(localStorage.getItem('kabadiwala_collector_lat') || '18.5204'));
+  const [collectorLng, setCollectorLng] = useState<number>(parseFloat(localStorage.getItem('kabadiwala_collector_lng') || '73.8567'));
+
+  const handleSelectMapLocation = (lat: number, lng: number, address: string, locality: string) => {
+    setCollectorLat(lat);
+    setCollectorLng(lng);
+    setExactAddress(address);
+    if (locality) setDistrict(locality);
+    localStorage.setItem('kabadiwala_collector_lat', lat.toString());
+    localStorage.setItem('kabadiwala_collector_lng', lng.toString());
+    localStorage.setItem('kabadiwala_collector_address', address);
+  };
 
   const districts = ['Pune', 'Pimpri-Chinchwad', 'Mumbai', 'Thane', 'Nagpur', 'Nashik'];
 
@@ -130,48 +145,75 @@ export const CollectorOnboardingPage: React.FC = () => {
         </button>
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Step 1: Location / District Selector                                */}
-      {/* ------------------------------------------------------------------ */}
-      {step === 1 && (
-        <div className="bg-surface-card rounded-2xl p-6 border border-surface-border shadow-soft space-y-5 my-auto">
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center">
-            <MapPin size={32} />
-          </div>
+  {/* ------------------------------------------------------------------ */}
+  {/* Step 1: Location / District Selector & OpenStreetMap               */}
+  {/* ------------------------------------------------------------------ */}
+  {step === 1 && (
+    <div className="bg-surface-card rounded-2xl p-6 border border-surface-border shadow-soft space-y-5 my-auto">
+      <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center">
+        <MapPin size={32} />
+      </div>
 
-          <div className="text-center space-y-1">
-            <h2 className="text-xl font-bold text-stone-900">आपला जिल्हा निवडा (Select Location)</h2>
-            <p className="text-xs text-stone-500 font-medium">आपल्या परिसरातील लाइव्ह बाजारभाव मिळवण्यासाठी जिल्हा निवडा</p>
-          </div>
+      <div className="text-center space-y-1">
+        <h2 className="text-xl font-bold text-stone-900">आपला जिल्हा निवडा (Select Location)</h2>
+        <p className="text-xs text-stone-500 font-medium">आपल्या परिसरातील लाइव्ह बाजारभाव मिळवण्यासाठी जिल्हा निवडा</p>
+      </div>
 
-          <div className="grid grid-cols-2 gap-2.5">
-            {districts.map((d) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => setDistrict(d)}
-                className={`p-3 rounded-xl border text-left flex items-center space-x-2 transition-all ${
-                  district === d
-                    ? 'bg-amber-50 border-amber-500 text-amber-900 font-bold ring-2 ring-amber-500/20'
-                    : 'bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100'
-                }`}
-              >
-                <MapPin size={16} className={district === d ? 'text-amber-600' : 'text-stone-400'} />
-                <span className="text-xs">{d}</span>
-              </button>
-            ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setStep(2)}
-            className="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center space-x-2 shadow-md active:scale-95 transition-all mt-4"
-          >
-            <span>आगे बढ़ें (Next Step)</span>
-            <ArrowRight size={18} />
-          </button>
+      {/* OpenStreetMap Exact Shop Location Picker Button */}
+      <div className="bg-[#F0FDF4] border border-[#DCFCE7] rounded-2xl p-3.5 space-y-2">
+        <div className="flex items-center justify-between text-xs font-bold text-emerald-900">
+          <span>📍 Exact Shop / Operating Location:</span>
+          <span className="font-mono text-[10px] text-emerald-700">{collectorLat.toFixed(3)}, {collectorLng.toFixed(3)}</span>
         </div>
-      )}
+        <div className="text-xs font-black text-stone-900 truncate">{exactAddress}</div>
+        <button
+          type="button"
+          onClick={() => setShowMapPicker(true)}
+          className="w-full bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold text-xs py-2.5 rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all"
+        >
+          <MapPin size={15} />
+          <span>Pick Exact Location on OpenStreetMap</span>
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2.5">
+        {districts.map((d) => (
+          <button
+            key={d}
+            type="button"
+            onClick={() => setDistrict(d)}
+            className={`p-3 rounded-xl border text-left flex items-center space-x-2 transition-all ${
+              district === d
+                ? 'bg-amber-50 border-amber-500 text-amber-900 font-bold ring-2 ring-amber-500/20'
+                : 'bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100'
+            }`}
+          >
+            <MapPin size={16} className={district === d ? 'text-amber-600' : 'text-stone-400'} />
+            <span className="text-xs">{d}</span>
+          </button>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setStep(2)}
+        className="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center space-x-2 shadow-md active:scale-95 transition-all mt-4"
+      >
+        <span>आगे बढ़ें (Next Step)</span>
+        <ArrowRight size={18} />
+      </button>
+
+      {/* OpenStreetMap Modal */}
+      <LocationPickerModal
+        isOpen={showMapPicker}
+        onClose={() => setShowMapPicker(false)}
+        onSelectLocation={handleSelectMapLocation}
+        initialLat={collectorLat}
+        initialLng={collectorLng}
+        title="Pick Exact Shop / Operating Location"
+      />
+    </div>
+  )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Step 2: Account Structure Selection                                 */}

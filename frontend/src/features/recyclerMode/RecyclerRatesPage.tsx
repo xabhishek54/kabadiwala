@@ -1,10 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { Save, CheckCircle2, Factory, RefreshCw } from 'lucide-react';
+import { Save, CheckCircle2, Factory, RefreshCw, MapPin } from 'lucide-react';
 import { updateRecyclerRates } from '../../data/remote/apiClient';
+import { LocationPickerModal } from '../../components/LocationPickerModal';
 
 export const RecyclerRatesPage: React.FC = () => {
   const [recyclerId, setRecyclerId] = useState('rec-pune-001');
   const [recyclerName, setRecyclerName] = useState('EcoRecycle India');
+  const [showMapPicker, setShowMapPicker] = useState(false);
+  const [facilityAddress, setFacilityAddress] = useState(localStorage.getItem('kabadiwala_recycler_address') || 'Hadapsar Industrial Estate, Pune');
+  const [facilityLat, setFacilityLat] = useState<number>(parseFloat(localStorage.getItem('kabadiwala_recycler_lat') || '18.5089'));
+  const [facilityLng, setFacilityLng] = useState<number>(parseFloat(localStorage.getItem('kabadiwala_recycler_lng') || '73.9259'));
+
+  const handleSelectFacilityLocation = (lat: number, lng: number, address: string) => {
+    setFacilityLat(lat);
+    setFacilityLng(lng);
+    setFacilityAddress(address);
+    localStorage.setItem('kabadiwala_recycler_lat', lat.toString());
+    localStorage.setItem('kabadiwala_recycler_lng', lng.toString());
+    localStorage.setItem('kabadiwala_recycler_address', address);
+  };
   const [rates, setRates] = useState<Record<string, number>>({
     PCB: 260.0,
     BATTERY: 90.0,
@@ -152,6 +166,23 @@ export const RecyclerRatesPage: React.FC = () => {
             </button>
           </div>
 
+          {/* Facility OpenStreetMap Exact Location Card */}
+          <div className="bg-[#F0FDF4] border border-[#DCFCE7] rounded-xl p-3 space-y-2">
+            <div className="flex items-center justify-between text-xs font-bold text-emerald-900">
+              <span>📍 Facility OpenStreetMap GPS:</span>
+              <span className="font-mono text-[10px] text-emerald-700">{facilityLat.toFixed(3)}, {facilityLng.toFixed(3)}</span>
+            </div>
+            <div className="text-xs font-black text-stone-900 truncate">{facilityAddress}</div>
+            <button
+              type="button"
+              onClick={() => setShowMapPicker(true)}
+              className="w-full bg-[#16A34A] hover:bg-emerald-700 text-white font-bold text-xs py-2 rounded-lg shadow-xs flex items-center justify-center gap-1 transition-all"
+            >
+              <MapPin size={14} />
+              <span>Set Facility Location on OpenStreetMap</span>
+            </button>
+          </div>
+
           {/* Service Radius */}
           {pickupAvailable && (
             <div className="flex items-center justify-between bg-stone-50 p-3 rounded-xl border border-stone-200">
@@ -167,6 +198,16 @@ export const RecyclerRatesPage: React.FC = () => {
               </select>
             </div>
           )}
+
+          {/* OpenStreetMap Modal */}
+          <LocationPickerModal
+            isOpen={showMapPicker}
+            onClose={() => setShowMapPicker(false)}
+            onSelectLocation={handleSelectFacilityLocation}
+            initialLat={facilityLat}
+            initialLng={facilityLng}
+            title="Set Recycling Facility OpenStreetMap Location"
+          />
 
           {/* Materials Accepted */}
           <div className="bg-stone-50 p-3 rounded-xl border border-stone-200 space-y-2">

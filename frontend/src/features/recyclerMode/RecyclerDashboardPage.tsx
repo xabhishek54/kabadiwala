@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  Factory, Package, CheckCircle2, Search, Filter, IndianRupee,
+  Factory, Package, Search, Filter, IndianRupee,
   Award, ShieldCheck, RefreshCw, Layers, ShieldAlert
 } from 'lucide-react';
 import { db } from '../../data/local/db';
@@ -38,8 +38,6 @@ export const RecyclerDashboardPage: React.FC = () => {
   const userJson = typeof window !== 'undefined' ? localStorage.getItem('kabadiwala_user') : null;
   const currentUser = userJson ? JSON.parse(userJson) : null;
   const recyclerId = currentUser?.recycler_id || currentUser?.id || 'rec-pune-001';
-  const recyclerName = currentUser?.name || 'EcoRecycle India (Pune Hub)';
-  const mpcbRef = currentUser?.mpcb_ref || 'MPCB/E-WASTE/2024/089';
 
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [lots, setLots] = useState<AdminLot[]>([]);
@@ -47,9 +45,6 @@ export const RecyclerDashboardPage: React.FC = () => {
   const [categoryFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
-  const [selectedLot, setSelectedLot] = useState<AdminLot | null>(null);
-  const [overridePrice, setOverridePrice] = useState<string>('');
-  const [actionLoading, setActionLoading] = useState<boolean>(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -63,10 +58,11 @@ export const RecyclerDashboardPage: React.FC = () => {
 
       const localLots: AdminLot[] = matchedLocalTxs.map(tx => {
         const mat = localMatMap.get(tx.lot_id);
+        const cat = (tx as any).material_category || mat?.material_category || 'PCB';
         return {
           lot_id: tx.lot_id,
-          category: tx.material_category,
-          sub_category: mat?.sub_category || tx.material_category,
+          category: cat,
+          sub_category: mat?.sub_category || cat,
           weight_kg: mat?.approx_weight_kg || 5.0,
           condition: mat?.condition || 'intact',
           estimated_value: tx.final_sale_value || tx.quoted_price || mat?.estimated_value || 0,
@@ -150,32 +146,6 @@ export const RecyclerDashboardPage: React.FC = () => {
     fetchData();
   }, [recyclerId]);
 
-  const handleUpdateStatus = async (newStatus: string) => {
-    if (!selectedLot) return;
-    setActionLoading(true);
-    const saleVal = overridePrice ? parseFloat(overridePrice) : selectedLot.estimated_value;
-
-    try {
-      const res = await fetch(`http://localhost:8000/admin/lots/${selectedLot.lot_id}/status?status=${newStatus}&final_sale_value=${saleVal}`, {
-        method: 'PATCH',
-      });
-      if (res.ok) {
-        setLots(prev =>
-          prev.map(l => (l.lot_id === selectedLot.lot_id ? { ...l, status: newStatus, final_sale_value: saleVal, payment_status: 'paid' } : l))
-        );
-        setSelectedLot(null);
-      }
-    } catch {
-      // offline optimism
-      setLots(prev =>
-        prev.map(l => (l.lot_id === selectedLot.lot_id ? { ...l, status: newStatus, final_sale_value: saleVal, payment_status: 'paid' } : l))
-      );
-      setSelectedLot(null);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   const filteredLots = lots.filter(lot => {
     const matchesStatus = statusFilter === 'all' || lot.status === statusFilter;
     const matchesCategory = categoryFilter === 'all' || lot.category === categoryFilter;
@@ -188,11 +158,11 @@ export const RecyclerDashboardPage: React.FC = () => {
   });
 
   return (
-    <div className="pb-24 pt-4 px-4 max-w-4xl mx-auto space-y-5">
+    <div className="pb-24 pt-4 px-4 max-w-4xl mx-auto space-y-5 font-sans">
       {/* Recycler Header */}
       <div className="bg-stone-900 text-white rounded-2xl p-5 shadow-elevated border border-stone-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center space-x-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-brand-500 text-white flex items-center justify-center shadow-md shrink-0">
+          <div className="w-12 h-12 rounded-2xl bg-[#16A34A] text-white flex items-center justify-center shadow-md shrink-0">
             <Factory size={26} />
           </div>
           <div>
@@ -227,16 +197,16 @@ export const RecyclerDashboardPage: React.FC = () => {
 
       {/* Metrics Banner */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-surface-card rounded-card p-4 border border-surface-border shadow-soft space-y-1">
+        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-1">
           <div className="flex items-center justify-between text-stone-500 text-xs font-semibold">
             <span>Total Intake</span>
-            <Package size={16} className="text-brand-600" />
+            <Package size={16} className="text-[#16A34A]" />
           </div>
           <p className="text-xl font-black text-stone-900">{stats ? `${stats.total_weight_kg} kg` : '0 kg'}</p>
           <p className="text-[11px] text-emerald-600 font-medium">↑ 14% this month</p>
         </div>
 
-        <div className="bg-surface-card rounded-card p-4 border border-surface-border shadow-soft space-y-1">
+        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-1">
           <div className="flex items-center justify-between text-stone-500 text-xs font-semibold">
             <span>Disbursed Payouts</span>
             <IndianRupee size={16} className="text-emerald-600" />
@@ -245,7 +215,7 @@ export const RecyclerDashboardPage: React.FC = () => {
           <p className="text-[11px] text-stone-500 font-medium">Direct cash & UPI</p>
         </div>
 
-        <div className="bg-surface-card rounded-card p-4 border border-surface-border shadow-soft space-y-1">
+        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-1">
           <div className="flex items-center justify-between text-stone-500 text-xs font-semibold">
             <span>Active Lots</span>
             <Layers size={16} className="text-amber-600" />
@@ -254,7 +224,7 @@ export const RecyclerDashboardPage: React.FC = () => {
           <p className="text-[11px] text-amber-600 font-medium">Pending verification</p>
         </div>
 
-        <div className="bg-surface-card rounded-card p-4 border border-surface-border shadow-soft space-y-1">
+        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-1">
           <div className="flex items-center justify-between text-stone-500 text-xs font-semibold">
             <span>Authorized Recyclers</span>
             <Award size={16} className="text-purple-600" />
@@ -265,12 +235,12 @@ export const RecyclerDashboardPage: React.FC = () => {
       </div>
 
       {/* Lot Queue Filters & Search */}
-      <div className="bg-surface-card rounded-card p-4 border border-surface-border shadow-soft space-y-3">
+      <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h3 className="font-bold text-stone-900 text-base flex items-center space-x-2">
-            <Package size={18} className="text-brand-600" />
+            <Package size={18} className="text-[#16A34A]" />
             <span>Incoming E-Waste Queue</span>
-            <span className="bg-brand-100 text-brand-700 text-xs font-bold px-2 py-0.5 rounded-full">
+            <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-0.5 rounded-full">
               {filteredLots.length}
             </span>
           </h3>
@@ -282,7 +252,7 @@ export const RecyclerDashboardPage: React.FC = () => {
               placeholder="Search lot ID or material..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-stone-200 bg-surface-muted focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-stone-200 bg-stone-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20"
             />
           </div>
         </div>
@@ -297,7 +267,7 @@ export const RecyclerDashboardPage: React.FC = () => {
               onClick={() => setStatusFilter(st)}
               className={`px-2.5 py-1 rounded-lg capitalize transition-colors ${
                 statusFilter === st
-                  ? 'bg-brand-600 text-white font-semibold shadow-xs'
+                  ? 'bg-[#16A34A] text-white font-semibold shadow-xs'
                   : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
               }`}
             >
@@ -310,7 +280,7 @@ export const RecyclerDashboardPage: React.FC = () => {
       {/* Lot Queue Table / Cards */}
       <div className="space-y-3">
         {filteredLots.length === 0 ? (
-          <div className="bg-surface-card rounded-card p-8 text-center border border-surface-border space-y-2">
+          <div className="bg-white rounded-2xl p-8 text-center border border-stone-200 space-y-2">
             <Package size={36} className="mx-auto text-stone-300" />
             <p className="text-sm font-semibold text-stone-600">No lots found matching criteria</p>
           </div>
@@ -318,10 +288,10 @@ export const RecyclerDashboardPage: React.FC = () => {
           filteredLots.map(lot => (
             <div
               key={lot.lot_id}
-              className="bg-surface-card rounded-card p-4 border border-surface-border shadow-soft flex flex-col md:flex-row items-start md:items-center justify-between gap-3 hover:border-brand-300 transition-colors"
+              className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-3 hover:border-emerald-300 transition-colors"
             >
               <div className="flex items-center space-x-3.5">
-                <div className="w-11 h-11 rounded-xl bg-brand-50 border border-brand-200/60 text-brand-700 flex items-center justify-center font-bold text-sm shrink-0">
+                <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center justify-center font-bold text-xs shrink-0">
                   {(lot.category ?? 'N/A').slice(0, 3)}
                 </div>
                 <div>
@@ -359,7 +329,7 @@ export const RecyclerDashboardPage: React.FC = () => {
                 {lot.status !== 'confirmed' && lot.status !== 'paid' && lot.status !== 'closed' && (
                   <button
                     onClick={() => navigate(`/handover/${lot.lot_id}`)}
-                    className="tap-target px-3 py-1.5 text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-xs transition-colors flex items-center space-x-1"
+                    className="tap-target px-3 py-1.5 text-xs font-bold bg-[#16A34A] hover:bg-emerald-700 text-white rounded-xl shadow-xs transition-colors flex items-center space-x-1"
                   >
                     <span>🔐</span>
                     <span>Digital Handover</span>
@@ -370,8 +340,6 @@ export const RecyclerDashboardPage: React.FC = () => {
           ))
         )}
       </div>
-
-
     </div>
   );
 };
