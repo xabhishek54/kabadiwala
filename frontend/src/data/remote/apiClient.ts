@@ -33,10 +33,11 @@ export async function fetchRecyclerMatches(category: string, lat: number = 18.52
     const response = await fetch(
       `${API_BASE_URL}/recyclers/match/rank?category=${encodeURIComponent(category)}&lat=${lat}&lng=${lng}`
     );
-    if (!response.ok) {
-      throw new Error(`Recycler match failed with status ${response.status}`);
+    const data = await response.json();
+    if (Array.isArray(data) && data.length > 0) {
+      return data;
     }
-    return response.json();
+    throw new Error('No backend matches found for category');
   } catch (error) {
     console.warn('API recycler match offline fallback, using local mock data:', error);
     // Offline fallback for demo purposes
@@ -94,7 +95,7 @@ export async function getHandoverToken(lotId: string) {
   try {
     const response = await fetch(`${API_BASE_URL}/handovers/${lotId}/qr-token`);
     if (response.ok) {
-      return response.json();
+      return await response.json();
     }
   } catch (e) {
     console.warn('API token fetch failed, using offline generated token');
@@ -196,5 +197,195 @@ export async function refinePriceEstimate(
       sample_count: 0,
       district,
     };
+  }
+}
+
+export interface AnomalyRecord {
+  lot_id: string;
+  collector_id: string;
+  material_category: string;
+  quoted_price: number;
+  median_price: number;
+  mad_score: number;
+  z_score: number;
+  condition_signal: string;
+  flagged_reasons: string[];
+  recommended_action: string;
+  audit_status: string;
+}
+
+export async function fetchPrices(district: string = 'Pune') {
+  try {
+    const response = await fetch(`${API_BASE_URL}/prices?district=${encodeURIComponent(district)}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  } catch (err) {
+    console.warn('Fetch prices offline fallback:', err);
+    return [];
+  }
+}
+
+export async function fetchAnomalies(): Promise<AnomalyRecord[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/admin/anomalies`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  } catch (err) {
+    console.warn('Fetch anomalies offline fallback:', err);
+    throw err;
+  }
+}
+
+export async function submitFieldPriceReport(data: {
+  category: string;
+  price_per_kg: number;
+  district?: string;
+  notes?: string;
+}) {
+  const response = await fetch(`${API_BASE_URL}/prices/field-report`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      category: data.category,
+      price_per_kg: data.price_per_kg,
+      district: data.district || 'Pune',
+      notes: data.notes || '',
+    }),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
+export async function syncCommodityIndex(district: string = 'Pune') {
+  const response = await fetch(`${API_BASE_URL}/prices/sync-commodity-index?district=${encodeURIComponent(district)}`, {
+    method: 'POST',
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
+export async function registerRecycler(data: {
+  name: string;
+  contact_phone: string;
+  authorization_ref_no: string;
+  facility_lat?: number;
+  facility_lng?: number;
+  offered_rates: Record<string, number>;
+  materials_accepted?: string[];
+}) {
+  const payload = {
+    name: data.name,
+    contact_phone: data.contact_phone,
+    authorization_ref_no: data.authorization_ref_no,
+    facility_lat: data.facility_lat || 18.5204,
+    facility_lng: data.facility_lng || 73.8567,
+    service_radius_km: 30.0,
+    materials_accepted: data.materials_accepted || Object.keys(data.offered_rates),
+    authorization_status: 'verified',
+    offered_rates: data.offered_rates,
+    pickup_available: true,
+  };
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/recyclers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  } catch (err) {
+    console.warn('Register recycler offline fallback:', err);
+    return {
+      recycler_id: `rec-local-${Date.now()}`,
+      ...payload,
+    };
+  }
+}
+
+export async function updateRecyclerRates(recyclerId: string, rates: Record<string, number>) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/recyclers/${recyclerId}/rates`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rates }),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  } catch (err) {
+    console.warn('Update rates offline fallback:', err);
+    return { status: 'ok', rates };
+  }
+}
+
+// ─── Auth APIs ────────────────────────────────────────────────────────────────
+
+export interface LoginResponse {
+  user_id: string;
+  phone_number: string;
+  name: string;
+  role: string;
+  account_type?: string;
+  shop_code?: string;
+  district?: string;
+}
+
+/** Attempt login by phone + role. Returns user data if found, throws if not found. */
+export async function loginUser(phone: string, role: 'collector' | 'recycler'): Promise<LoginResponse> {
+  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone_number: phone, role }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || `Login failed (${response.status})`);
+  }
+  return response.json();
+}
+
+/** Register a new collector. Returns the saved collector record. */
+export async function signupCollector(data: {
+  phone_number: string;
+  display_name: string;
+  operating_locality: string;
+  account_type: 'independent' | 'shop' | 'sub_collector';
+  preferred_language?: string;
+}) {
+  const response = await fetch(`${API_BASE_URL}/auth/signup/collector`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || `Signup failed (${response.status})`);
+  }
+  return response.json();
+}
+
+/** Link a feriwala to a shop by shop_code. */
+export async function linkFeriwalaToShop(feriwalId: string, shopCode: string) {
+  const response = await fetch(`${API_BASE_URL}/collectors/link-shop`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ feriwala_collector_id: feriwalId, shop_code: shopCode }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || `Link failed (${response.status})`);
+  }
+  return response.json();
+}
+
+/** Fetch all feriwalas linked to a shop by shop_code. */
+export async function fetchShopFeriwalas(shopCode: string) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/collectors/shop/${encodeURIComponent(shopCode)}/feriwalas`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  } catch (err) {
+    console.warn('fetchShopFeriwalas offline fallback:', err);
+    return [];
   }
 }

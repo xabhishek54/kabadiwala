@@ -54,8 +54,11 @@ class ObservationUnit(str, enum.Enum):
     per_piece = "per_piece"
 
 class ObservationSource(str, enum.Enum):
-    transaction_derived = "transaction_derived"
-    manual_admin_entry = "manual_admin_entry"
+    transaction_derived = "transaction_derived"    # auto from completed handover
+    manual_admin_entry = "manual_admin_entry"      # admin-entered baseline
+    recycler_reported = "recycler_reported"        # recycler updated their rates
+    collector_field_report = "collector_field_report"  # collector saw a street price
+    market_index_derived = "market_index_derived"  # from LME / commodity index
 
 class PriceChannel(str, enum.Enum):
     formal = "formal"

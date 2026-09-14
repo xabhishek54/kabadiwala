@@ -112,3 +112,33 @@ def test_dashboard_stats():
     data = resp.json()
     assert data["total_lots"] >= 1
     assert data["total_weight_kg"] >= 12.5
+
+
+def test_resolve_anomaly():
+    resp = client.patch("/admin/anomalies/lot-admin-101/resolve")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "resolved"
+    assert data["lot_id"] == "lot-admin-101"
+
+
+def test_minerals_impact():
+    resp = client.get("/admin/minerals/impact")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "mineral_estimates" in data
+    assert "copper" in data["mineral_estimates"]
+    assert data["total_e_waste_processed_kg"] >= 12.5
+
+
+def test_update_recycler_config():
+    resp = client.put("/recyclers/admin-r1/config", json={
+        "pickup_available": True,
+        "service_radius_km": 25.0,
+        "materials_accepted": ["PCB", "BATTERY", "CABLE"]
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["service_radius_km"] == 25.0
+    assert "CABLE" in data["materials_accepted"]
+

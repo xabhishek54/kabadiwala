@@ -64,7 +64,7 @@ export const SafetyPage: React.FC = () => {
   ];
 
   return (
-    <div className="pb-24 pt-4 px-4 max-w-md mx-auto space-y-4">
+    <div className="pb-24 pt-4 px-4 max-w-md sm:max-w-3xl md:max-w-5xl lg:max-w-6xl mx-auto space-y-4">
       {/* Header Banner */}
       <div className="bg-surface-card rounded-card p-4 border border-surface-border shadow-soft flex items-center space-x-3.5">
         <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
@@ -77,7 +77,7 @@ export const SafetyPage: React.FC = () => {
       </div>
 
       {/* Safety Cards Grid */}
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
         {safetyCards.map((card) => (
           <div key={card.id} className={`rounded-card p-4 border shadow-soft space-y-2.5 transition-all ${card.bg}`}>
             <div className="flex items-start justify-between">

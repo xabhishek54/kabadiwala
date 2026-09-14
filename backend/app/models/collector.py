@@ -14,7 +14,8 @@ class Collector(Base):
     preferred_language = Column(Enum(PreferredLanguage), default=PreferredLanguage.hi, nullable=False)
     operating_locality = Column(String(100), nullable=False)
     account_type = Column(Enum(AccountType), default=AccountType.independent, nullable=False)
-    parent_shop_id = Column(String(36), ForeignKey("collectors.collector_id"), nullable=True)
+    shop_code = Column(String(20), unique=True, index=True, nullable=True)
+    parent_shop_id = Column(String(36), ForeignKey("collectors.collector_id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     parent_shop = relationship("Collector", remote_side=[collector_id], backref="sub_collectors")

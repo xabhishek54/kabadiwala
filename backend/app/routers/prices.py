@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
 from app.models.price import PriceObservation
-from app.models.enums import MaterialCategory, PriceChannel
+from app.models.enums import MaterialCategory, PriceChannel, ObservationSource, ObservationUnit
 from app.schemas.price import PriceObservationCreate, PriceObservationResponse, PriceAggregateResponse
 from app.services.pricing_engine import refine_price
 
@@ -45,12 +45,102 @@ def record_price_observation(payload: PriceObservationCreate, db: Session = Depe
     db.refresh(obs)
     return obs
 
+
+class FieldReportRequest(BaseModel):
+    category: str
+    price_per_kg: float
+    district: str = "Pune"
+    collector_id: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@router.post("/field-report", status_code=201)
+def submit_field_price_report(payload: FieldReportRequest, db: Session = Depends(get_db)):
+    """
+    Collector submits an informal price they observed from a local kabadiwala / scrap dealer.
+    Stored as channel=informal, source=collector_field_report.
+    The anomaly engine will flag outliers before they affect the board.
+    """
+    try:
+        cat_enum = MaterialCategory[payload.category]
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"Unknown category: {payload.category}")
+
+    obs = PriceObservation(
+        material_category=cat_enum,
+        sub_category=payload.category,
+        location_district=payload.district,
+        buying_price=payload.price_per_kg,
+        quoted_price=payload.price_per_kg,
+        unit=ObservationUnit.per_kg,
+        source=ObservationSource.collector_field_report,
+        channel=PriceChannel.informal,
+    )
+    db.add(obs)
+    db.commit()
+    db.refresh(obs)
+    return {
+        "status": "submitted",
+        "observation_id": obs.observation_id,
+        "message": "Price report recorded. Thank you!"
+    }
+
+
+@router.post("/sync-commodity-index")
+def sync_commodity_index(district: str = "Pune", db: Session = Depends(get_db)):
+    """
+    Strategy 4: Commodity Market Proxy (LME / Metal Spot Price derived indexing).
+    Updates price observations for copper/metal-heavy e-waste categories (PCB, Cable, Motor, Battery)
+    based on global LME copper & metal reference indices discount factors.
+    """
+    lme_copper_inr = 765.0
+    category_factors = {
+        MaterialCategory.PCB: 0.38,
+        MaterialCategory.CABLE: 0.65,
+        MaterialCategory.MOTOR_MAGNET: 0.22,
+        MaterialCategory.BATTERY: 0.18,
+    }
+
+    synced = []
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    for cat, factor in category_factors.items():
+        derived_price = round(lme_copper_inr * factor, 2)
+        obs = PriceObservation(
+            material_category=cat,
+            sub_category=cat.value,
+            location_district=district,
+            buying_price=derived_price,
+            quoted_price=derived_price,
+            unit=ObservationUnit.per_kg,
+            source=ObservationSource.market_index_derived,
+            channel=PriceChannel.formal,
+            observed_at=now,
+        )
+        db.add(obs)
+        synced.append({"category": cat.value, "derived_price": derived_price})
+
+    db.commit()
+    return {
+        "status": "success",
+        "commodity_index": "LME_COPPER_INR",
+        "benchmark_price_inr_kg": lme_copper_inr,
+        "synced_categories": synced
+    }
+
+
 @router.get("/board", response_model=List[PriceAggregateResponse])
 def get_price_board(district: str = "Pune", db: Session = Depends(get_db)):
     categories = list(MaterialCategory)
     aggregates = []
-    cutoff_14d = datetime.now(timezone.utc) - timedelta(days=14)
-    cutoff_28d = datetime.now(timezone.utc) - timedelta(days=28)
+    now_utc = datetime.now(timezone.utc)
+    cutoff_14d_aware = now_utc - timedelta(days=14)
+    cutoff_28d_aware = now_utc - timedelta(days=28)
+    cutoff_14d = cutoff_14d_aware.replace(tzinfo=None)
+    cutoff_28d = cutoff_28d_aware.replace(tzinfo=None)
+
+    def _ensure_naive(dt):
+        return dt.replace(tzinfo=None) if dt and dt.tzinfo is not None else dt
 
     for cat in categories:
         # Get formal observations in district
@@ -61,7 +151,7 @@ def get_price_board(district: str = "Pune", db: Session = Depends(get_db)):
             PriceObservation.observed_at >= cutoff_28d
         )
         obs_list = query.all()
-        prices_14d = [o.buying_price for o in obs_list if o.observed_at >= cutoff_14d]
+        prices_14d = [o.buying_price for o in obs_list if _ensure_naive(o.observed_at) >= cutoff_14d]
 
         if not prices_14d:
             # Fallback to all district observations or global default
@@ -84,7 +174,7 @@ def get_price_board(district: str = "Pune", db: Session = Depends(get_db)):
 
         # Trend slope over 4 weeks
         if len(obs_list) >= 3:
-            timestamps = [(o.observed_at - cutoff_28d).total_seconds() / 86400.0 for o in obs_list]
+            timestamps = [(_ensure_naive(o.observed_at) - cutoff_28d).total_seconds() / 86400.0 for o in obs_list]
             prices = [o.buying_price for o in obs_list]
             slope = float(np.polyfit(timestamps, prices, 1)[0]) if len(set(timestamps)) > 1 else 0.0
         else:
@@ -106,3 +196,10 @@ def get_price_board(district: str = "Pune", db: Session = Depends(get_db)):
         ))
 
     return aggregates
+
+
+# Alias: frontend apiClient calls GET /prices?district=... (without /board)
+@router.get("", response_model=List[PriceAggregateResponse])
+def get_price_board_alias(district: str = "Pune", db: Session = Depends(get_db)):
+    """Alias for /prices/board — used by frontend fetchPrices()."""
+    return get_price_board(district=district, db=db)

@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   Factory, Package, CheckCircle2, Search, Filter, IndianRupee,
-  Award, ShieldCheck, RefreshCw, Layers
+  Award, ShieldCheck, RefreshCw, Layers, ShieldAlert
 } from 'lucide-react';
+import { db } from '../../data/local/db';
 
 interface AdminLot {
   lot_id: string;
@@ -17,6 +20,7 @@ interface AdminLot {
   final_sale_value?: number;
   payment_status: string;
   created_at?: string;
+  recycler_id?: string;
 }
 
 interface DashboardStats {
@@ -28,6 +32,15 @@ interface DashboardStats {
 }
 
 export const RecyclerDashboardPage: React.FC = () => {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+
+  const userJson = typeof window !== 'undefined' ? localStorage.getItem('kabadiwala_user') : null;
+  const currentUser = userJson ? JSON.parse(userJson) : null;
+  const recyclerId = currentUser?.recycler_id || currentUser?.id || 'rec-pune-001';
+  const recyclerName = currentUser?.name || 'EcoRecycle India (Pune Hub)';
+  const mpcbRef = currentUser?.mpcb_ref || 'MPCB/E-WASTE/2024/089';
+
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [lots, setLots] = useState<AdminLot[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -41,74 +54,93 @@ export const RecyclerDashboardPage: React.FC = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [statsRes, lotsRes] = await Promise.all([
-        fetch('http://localhost:8000/admin/dashboard-stats').then(r => r.ok ? r.json() : null).catch(() => null),
-        fetch('http://localhost:8000/admin/lots').then(r => r.ok ? r.json() : []).catch(() => []),
-      ]);
+      // 1. Local IndexedDB matched transactions
+      const localTxs = await db.transactions.toArray();
+      const matchedLocalTxs = localTxs.filter(t => !t.recycler_id || t.recycler_id === recyclerId);
+      const allLocalMats = await db.materials.toArray();
+      const localMatMap = new Map();
+      allLocalMats.forEach(m => localMatMap.set(m.lot_id, m));
 
-      if (statsRes) {
-        setStats(statsRes);
-      } else {
-        // Fallback mock stats if offline
-        setStats({
-          total_lots: 24,
-          total_weight_kg: 345.5,
-          total_payouts_inr: 89400,
-          verified_recyclers_count: 8,
-          category_breakdown: [
-            { category: 'PCB', count: 10, weight_kg: 120.0 },
-            { category: 'BATTERY', count: 8, weight_kg: 140.5 },
-            { category: 'CABLE', count: 6, weight_kg: 85.0 },
-          ],
-        });
-      }
+      const localLots: AdminLot[] = matchedLocalTxs.map(tx => {
+        const mat = localMatMap.get(tx.lot_id);
+        return {
+          lot_id: tx.lot_id,
+          category: tx.material_category,
+          sub_category: mat?.sub_category || tx.material_category,
+          weight_kg: mat?.approx_weight_kg || 5.0,
+          condition: mat?.condition || 'intact',
+          estimated_value: tx.final_sale_value || tx.quoted_price || mat?.estimated_value || 0,
+          collector_id: tx.collector_id,
+          status: tx.status,
+          final_sale_value: tx.final_sale_value,
+          payment_status: tx.payment_status || 'unpaid',
+          created_at: tx.created_at,
+          recycler_id: tx.recycler_id || recyclerId,
+        };
+      });
 
-      if (lotsRes && lotsRes.length > 0) {
-        setLots(lotsRes);
-      } else {
-        // Fallback mock lots for dashboard demo
-        setLots([
-          {
-            lot_id: 'lot-8801',
-            category: 'PCB',
-            sub_category: 'Server Motherboards & RAM',
-            weight_kg: 25.0,
-            condition: 'intact',
-            estimated_value: 8750,
-            collector_id: 'coll-991',
-            status: 'matched',
-            payment_status: 'unpaid',
-            created_at: new Date().toISOString(),
-          },
-          {
-            lot_id: 'lot-8802',
-            category: 'BATTERY',
-            sub_category: 'Li-Ion Laptop Packs',
-            weight_kg: 18.5,
-            condition: 'damaged',
-            estimated_value: 3330,
-            collector_id: 'coll-402',
-            status: 'handed_over',
-            payment_status: 'unpaid',
-            created_at: new Date(Date.now() - 3600000).toISOString(),
-          },
-          {
-            lot_id: 'lot-8803',
-            category: 'CABLE',
-            sub_category: 'Heavy Copper Wiring',
-            weight_kg: 42.0,
-            condition: 'stripped',
-            estimated_value: 7560,
-            collector_id: 'coll-104',
-            status: 'confirmed',
-            final_sale_value: 7560,
-            payment_status: 'paid',
-            created_at: new Date(Date.now() - 86400000).toISOString(),
-          },
-        ]);
-      }
+      // 2. Backend lots
+      const lotsRes: AdminLot[] = await fetch('http://localhost:8000/admin/lots')
+        .then(r => (r.ok ? r.json() : []))
+        .catch(() => []);
+
+      // Scoped mock datasets for demo accounts
+      const facilityMockLots: Record<string, AdminLot[]> = {
+        'rec-pune-001': [
+          { lot_id: 'lot-pune-101', category: 'PCB', sub_category: 'Server Motherboards & RAM', weight_kg: 25.0, condition: 'intact', estimated_value: 6500, collector_id: 'col-demo-101', status: 'matched', payment_status: 'unpaid', recycler_id: 'rec-pune-001' },
+          { lot_id: 'lot-pune-102', category: 'BATTERY', sub_category: 'Li-Ion Laptop Battery Packs', weight_kg: 18.0, condition: 'damaged', estimated_value: 1620, collector_id: 'col-sub-001', status: 'confirmed', final_sale_value: 1620, payment_status: 'paid', recycler_id: 'rec-pune-001' },
+          { lot_id: 'lot-pune-103', category: 'CABLE', sub_category: 'Stripped Industrial Copper Wire', weight_kg: 32.0, condition: 'stripped', estimated_value: 4800, collector_id: 'col-sub-002', status: 'closed', final_sale_value: 4800, payment_status: 'paid', recycler_id: 'rec-pune-001' },
+        ],
+        'rec-mum-001': [
+          { lot_id: 'lot-mum-201', category: 'PCB', sub_category: 'Telecom Switching Racks & Gold PCBs', weight_kg: 45.0, condition: 'intact', estimated_value: 12825, collector_id: 'col-demo-101', status: 'matched', payment_status: 'unpaid', recycler_id: 'rec-mum-001' },
+          { lot_id: 'lot-mum-202', category: 'BATTERY', sub_category: 'Industrial UPS Battery Banks', weight_kg: 60.0, condition: 'intact', estimated_value: 6300, collector_id: 'col-ind-001', status: 'confirmed', final_sale_value: 6300, payment_status: 'paid', recycler_id: 'rec-mum-001' },
+        ],
+        'rec-pune-002': [
+          { lot_id: 'lot-chin-301', category: 'MOTOR_MAGNET', sub_category: 'Neodymium Stator Motor Assemblies', weight_kg: 40.0, condition: 'intact', estimated_value: 3000, collector_id: 'col-sub-001', status: 'matched', payment_status: 'unpaid', recycler_id: 'rec-pune-002' },
+          { lot_id: 'lot-chin-302', category: 'CRT', sub_category: 'Lead Glass Vacuum Tubes', weight_kg: 50.0, condition: 'damaged', estimated_value: 2000, collector_id: 'col-sub-002', status: 'closed', final_sale_value: 2000, payment_status: 'paid', recycler_id: 'rec-pune-002' },
+        ],
+      };
+
+      const fallbackList = facilityMockLots[recyclerId] || facilityMockLots['rec-pune-001'];
+
+      // Combine & deduplicate
+      const combined = [...localLots, ...lotsRes.filter(l => !l.recycler_id || l.recycler_id === recyclerId), ...fallbackList];
+      const uniqueLotsMap = new Map<string, AdminLot>();
+      combined.forEach(l => {
+        if (!uniqueLotsMap.has(l.lot_id)) uniqueLotsMap.set(l.lot_id, l);
+      });
+
+      const finalLotList = Array.from(uniqueLotsMap.values());
+      setLots(finalLotList);
+
+      // Compute facility-specific dynamic stats
+      let totalWt = 0;
+      let totalPayout = 0;
+      const catCount: Record<string, { count: number; weight: number }> = {};
+
+      finalLotList.forEach(l => {
+        totalWt += l.weight_kg;
+        if (l.payment_status === 'paid' || l.status === 'closed') {
+          totalPayout += l.final_sale_value || l.estimated_value;
+        }
+        if (!catCount[l.category]) catCount[l.category] = { count: 0, weight: 0 };
+        catCount[l.category].count += 1;
+        catCount[l.category].weight += l.weight_kg;
+      });
+
+      setStats({
+        total_lots: finalLotList.length,
+        total_weight_kg: Math.round(totalWt * 100) / 100,
+        total_payouts_inr: Math.round(totalPayout * 100) / 100,
+        verified_recyclers_count: 1,
+        category_breakdown: Object.entries(catCount).map(([cat, val]) => ({
+          category: cat,
+          count: val.count,
+          weight_kg: Math.round(val.weight * 100) / 100,
+        })),
+      });
     } catch {
-      // offline silent fallback
+      // Graceful error fallback
     } finally {
       setLoading(false);
     }
@@ -116,7 +148,7 @@ export const RecyclerDashboardPage: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [recyclerId]);
 
   const handleUpdateStatus = async (newStatus: string) => {
     if (!selectedLot) return;
@@ -174,13 +206,23 @@ export const RecyclerDashboardPage: React.FC = () => {
           </div>
         </div>
 
-        <button
-          onClick={fetchData}
-          className="tap-target px-3.5 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold flex items-center space-x-1.5 border border-stone-700 transition-colors"
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          <span>Refresh Queue</span>
-        </button>
+        <div className="flex items-center space-x-2">
+          <NavLink
+            to="/admin/anomalies"
+            className="tap-target px-3.5 py-2 rounded-xl bg-rose-900/80 hover:bg-rose-800 text-rose-200 text-xs font-bold flex items-center space-x-1.5 border border-rose-700/50 transition-colors"
+          >
+            <ShieldAlert size={14} className="text-rose-400 animate-pulse" />
+            <span>{t('recycler.anomalyAlerts')}</span>
+          </NavLink>
+
+          <button
+            onClick={fetchData}
+            className="tap-target px-3.5 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold flex items-center space-x-1.5 border border-stone-700 transition-colors"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            <span>Refresh Queue</span>
+          </button>
+        </div>
       </div>
 
       {/* Metrics Banner */}
@@ -280,13 +322,13 @@ export const RecyclerDashboardPage: React.FC = () => {
             >
               <div className="flex items-center space-x-3.5">
                 <div className="w-11 h-11 rounded-xl bg-brand-50 border border-brand-200/60 text-brand-700 flex items-center justify-center font-bold text-sm shrink-0">
-                  {lot.category.slice(0, 3)}
+                  {(lot.category ?? 'N/A').slice(0, 3)}
                 </div>
                 <div>
                   <div className="flex items-center space-x-2">
                     <span className="font-mono text-xs font-bold text-stone-900">{lot.lot_id}</span>
                     <span className="bg-stone-100 text-stone-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-stone-200">
-                      {lot.category}
+                      {lot.category ?? 'N/A'}
                     </span>
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${
                       lot.status === 'confirmed' || lot.status === 'paid'
@@ -314,15 +356,13 @@ export const RecyclerDashboardPage: React.FC = () => {
                   </p>
                 </div>
 
-                {lot.status !== 'confirmed' && lot.status !== 'paid' && (
+                {lot.status !== 'confirmed' && lot.status !== 'paid' && lot.status !== 'closed' && (
                   <button
-                    onClick={() => {
-                      setSelectedLot(lot);
-                      setOverridePrice((lot.final_sale_value || lot.estimated_value).toString());
-                    }}
-                    className="tap-target px-3 py-1.5 text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-xs transition-colors"
+                    onClick={() => navigate(`/handover/${lot.lot_id}`)}
+                    className="tap-target px-3 py-1.5 text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-xs transition-colors flex items-center space-x-1"
                   >
-                    Verify & Confirm
+                    <span>🔐</span>
+                    <span>Digital Handover</span>
                   </button>
                 )}
               </div>
@@ -331,69 +371,7 @@ export const RecyclerDashboardPage: React.FC = () => {
         )}
       </div>
 
-      {/* Verify & Price Override Modal */}
-      {selectedLot && (
-        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface-card rounded-card border border-surface-border shadow-elevated p-5 max-w-md w-full space-y-4">
-            <div className="flex items-center justify-between border-b border-stone-200 pb-3">
-              <div>
-                <h3 className="font-bold text-stone-900 text-base">Verify & Settle Lot</h3>
-                <p className="text-xs text-stone-500 font-mono">Lot ID: {selectedLot.lot_id}</p>
-              </div>
-              <button
-                onClick={() => setSelectedLot(null)}
-                className="text-stone-400 hover:text-stone-600 font-bold text-sm px-2"
-              >
-                ✕
-              </button>
-            </div>
 
-            <div className="space-y-2.5 text-xs text-stone-700">
-              <div className="flex justify-between py-1 border-b border-stone-100">
-                <span className="text-stone-500">Material Category:</span>
-                <span className="font-bold">{selectedLot.category} ({selectedLot.sub_category})</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-stone-100">
-                <span className="text-stone-500">Weight & Condition:</span>
-                <span className="font-bold">{selectedLot.weight_kg} kg — {selectedLot.condition}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-stone-100">
-                <span className="text-stone-500">System Estimated Value:</span>
-                <span className="font-bold">₹{selectedLot.estimated_value.toLocaleString('en-IN')}</span>
-              </div>
-            </div>
-
-            <div className="space-y-1.5 pt-1">
-              <label className="block text-xs font-bold text-stone-800">
-                Final Agreed Value (₹) — Recycler Grade Refinement:
-              </label>
-              <input
-                type="number"
-                value={overridePrice}
-                onChange={e => setOverridePrice(e.target.value)}
-                className="w-full px-3 py-2 text-sm font-bold border border-stone-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none"
-              />
-            </div>
-
-            <div className="flex space-x-2 pt-2">
-              <button
-                onClick={() => setSelectedLot(null)}
-                className="flex-1 py-2.5 rounded-xl border border-stone-300 text-xs font-bold text-stone-700 hover:bg-stone-100"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleUpdateStatus('confirmed')}
-                disabled={actionLoading}
-                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs flex items-center justify-center space-x-1"
-              >
-                <CheckCircle2 size={16} />
-                <span>Confirm & Pay</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

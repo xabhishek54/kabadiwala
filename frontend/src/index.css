@@ -3,9 +3,12 @@
 @tailwind utilities;
 
 @layer base {
-  body {
-    @apply bg-surface-bg text-stone-900 font-sans antialiased min-h-screen select-none;
+  html, body, #root {
+    @apply bg-surface-bg text-stone-900 font-sans antialiased min-h-screen select-none overflow-x-hidden max-w-full;
     -webkit-tap-highlight-color: transparent;
+    width: 100%;
+    margin: 0;
+    padding: 0;
   }
 }
 

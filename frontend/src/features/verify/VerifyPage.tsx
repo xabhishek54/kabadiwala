@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { ShieldCheck, ShieldAlert, Search, Package, Award, UserCheck, Factory } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Search, Package, Award, UserCheck, Factory, QrCode, X } from 'lucide-react';
+import { Html5Qrcode } from 'html5-qrcode';
 
 interface VerifyDetails {
   type: string;
@@ -18,6 +19,8 @@ export const VerifyPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [searched, setSearched] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [showScanner, setShowScanner] = useState<boolean>(false);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
 
   const performLookup = async (idToSearch: string) => {
     if (!idToSearch.trim()) return;
@@ -60,6 +63,42 @@ export const VerifyPage: React.FC = () => {
     }
   }, [urlIdentifier]);
 
+  const startScanner = async () => {
+    setShowScanner(true);
+    setTimeout(async () => {
+      try {
+        const html5QrCode = new Html5Qrcode('qr-reader');
+        scannerRef.current = html5QrCode;
+        await html5QrCode.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 220, height: 220 } },
+          (decodedText) => {
+            setQuery(decodedText);
+            stopScanner();
+            performLookup(decodedText);
+          },
+          () => {}
+        );
+      } catch (err) {
+        console.warn('QR camera start error:', err);
+      }
+    }, 200);
+  };
+
+  const stopScanner = async () => {
+    if (scannerRef.current) {
+      try {
+        if (scannerRef.current.isScanning) {
+          await scannerRef.current.stop();
+        }
+      } catch (e) {
+        console.error(e);
+      }
+      scannerRef.current = null;
+    }
+    setShowScanner(false);
+  };
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     performLookup(query);
@@ -78,26 +117,62 @@ export const VerifyPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Search Bar */}
-      <form onSubmit={handleSearch} className="flex space-x-2">
-        <div className="relative flex-1">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-          <input
-            type="text"
-            placeholder="Enter Lot ID, Recycler Ref #, or Agent Badge ID..."
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-stone-300 bg-white font-medium focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
-          />
-        </div>
+      {/* Search Bar & QR Button */}
+      <div className="space-y-2">
+        <form onSubmit={handleSearch} className="flex space-x-2">
+          <div className="relative flex-1">
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+            <input
+              type="text"
+              placeholder="Enter Lot ID, Recycler Ref #, or Agent Badge ID..."
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-stone-300 bg-white font-medium focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="tap-target px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors shrink-0"
+          >
+            {loading ? 'Verifying...' : 'Verify'}
+          </button>
+        </form>
+
         <button
-          type="submit"
-          disabled={loading}
-          className="tap-target px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors shrink-0"
+          type="button"
+          onClick={startScanner}
+          className="w-full py-2.5 px-4 bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 rounded-xl text-xs font-bold flex items-center justify-center space-x-2 transition-colors shadow-xs"
         >
-          {loading ? 'Verifying...' : 'Verify'}
+          <QrCode size={16} />
+          <span>Scan Badge / QR Code with Camera</span>
         </button>
-      </form>
+      </div>
+
+      {/* Camera QR Scanner Modal */}
+      {showScanner && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-4 w-full max-w-sm space-y-3 relative">
+            <button
+              onClick={stopScanner}
+              className="absolute top-3 right-3 p-1.5 rounded-full bg-stone-100 text-stone-600 hover:bg-stone-200"
+            >
+              <X size={18} />
+            </button>
+            <div className="text-center">
+              <h3 className="font-bold text-stone-900 text-sm">Scan Verification QR Code</h3>
+              <p className="text-[11px] text-stone-500">Point your camera at a lot QR code or recycler badge</p>
+            </div>
+            <div id="qr-reader" className="overflow-hidden rounded-xl bg-stone-900 min-h-[220px]"></div>
+            <button
+              onClick={stopScanner}
+              className="w-full py-2 bg-stone-200 text-stone-800 text-xs font-bold rounded-xl"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Lookup Result */}
       {searched && (

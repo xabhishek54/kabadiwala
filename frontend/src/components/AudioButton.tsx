@@ -11,10 +11,21 @@ interface AudioButtonProps {
 export const AudioButton: React.FC<AudioButtonProps> = ({ textToSpeak, className = '', size = 20 }) => {
   const { i18n } = useTranslation();
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
 
   useEffect(() => {
+    if (!('speechSynthesis' in window)) return;
+
+    const updateVoices = () => {
+      setVoices(window.speechSynthesis.getVoices());
+    };
+
+    updateVoices();
+    window.speechSynthesis.addEventListener('voiceschanged', updateVoices);
+
     return () => {
       if ('speechSynthesis' in window) {
+        window.speechSynthesis.removeEventListener('voiceschanged', updateVoices);
         window.speechSynthesis.cancel();
       }
     };
@@ -37,8 +48,15 @@ export const AudioButton: React.FC<AudioButtonProps> = ({ textToSpeak, className
       mr: 'mr-IN',
       en: 'en-IN',
     };
-    utterance.lang = langMap[i18n.language] || 'hi-IN';
+    const targetLang = langMap[i18n.language] || 'hi-IN';
+    utterance.lang = targetLang;
     utterance.rate = 0.9;
+
+    const availableVoices = voices.length > 0 ? voices : window.speechSynthesis.getVoices();
+    const matchedVoice = availableVoices.find(v => v.lang === targetLang || v.lang.startsWith(targetLang.split('-')[0]));
+    if (matchedVoice) {
+      utterance.voice = matchedVoice;
+    }
 
     utterance.onstart = () => setIsSpeaking(true);
     utterance.onend = () => setIsSpeaking(false);

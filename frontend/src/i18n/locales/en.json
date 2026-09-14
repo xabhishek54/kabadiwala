@@ -65,5 +65,87 @@
     "smokeTip": "Desoldering or heating circuit boards generates toxic fumes; work only in ventilated areas!",
     "ppeTitle": "Personal Protective Gear",
     "ppeTip": "Always wear thick protective gloves and sturdy boots when sorting sharp metal scrap!"
+  },
+  "handover": {
+    "title": "Digital Handover & QR",
+    "scanQR": "Scan Recycler QR",
+    "completeHandover": "Complete Handover",
+    "success": "Handover Completed!",
+    "receipt": "Digital Receipt",
+    "shareWhatsapp": "Share on WhatsApp",
+    "verifyHash": "Verify Blockchain Hash"
+  },
+  "match": {
+    "title": "Find Verified Recycler",
+    "findRecyclers": "Nearby Buyers & Recyclers",
+    "formalRecyclers": "Verified Recyclers (Best Price)",
+    "maxEarnings": "Max Earnings",
+    "estimatedPickup": "Est. Pickup: Today",
+    "navigateToRecycler": "Navigate to Buyer",
+    "lockInPrice": "Lock-In Price"
+  },
+  "recycler": {
+    "dashboardTitle": "Recycler Hub",
+    "incomingLots": "Incoming Digital Lots",
+    "verifyReceipt": "Verify Lot Receipt",
+    "confirmPayment": "Confirm Payment Sent",
+    "approveLot": "Approve & Pay",
+    "rejectLot": "Flag / Reject",
+    "anomalyAlerts": "Anomaly Alerts"
+  },
+  "profile": {
+    "title": "User Profile",
+    "name": "Full Name",
+    "phone": "Phone Number",
+    "role": "Current Mode",
+    "collector": "Waste Collector",
+    "recycler": "Authorized Recycler",
+    "switchRole": "Switch Mode",
+    "logout": "Logout",
+    "stats": "Earnings Summary"
+  },
+  "minerals": {
+    "title": "Strategic Mineral Extraction",
+    "cobalt": "Cobalt (g)",
+    "copper": "Copper (g)",
+    "lithium": "Lithium (g)",
+    "gold": "Gold (mg)",
+    "environmentalImpact": "Environmental Impact Saved",
+    "carbonSaved": "CO₂ Avoided"
+  },
+  "verify": {
+    "title": "Receipt Verification",
+    "enterHash": "Enter Receipt Hash",
+    "verifyButton": "Verify Integrity",
+    "authentic": "Receipt Authentic & Immutable",
+    "tampered": "Warning: Record Tampered!"
+  },
+  "anomaly": {
+    "title": "Anomaly & Fraud Detection",
+    "zscore": "MAD Z-Score",
+    "signal": "Condition Signal",
+    "action": "Recommended Action",
+    "reviewRequired": "Review Required",
+    "resolution": "Resolve Anomaly",
+    "markClean": "Mark Safe",
+    "flagFraud": "Flag Fraud"
+  },
+  "auth": {
+    "loginTitle": "Welcome to Kabadiwala Connect",
+    "signupTitle": "Create Your Account",
+    "selectRole": "Select Account Type",
+    "enterPhone": "Enter Mobile Number",
+    "enterName": "Enter Full Name",
+    "continueBtn": "Continue",
+    "recyclerMode": "Recycler Access"
+  },
+  "onboarding": {
+    "step1Title": "Fair & Transparent Prices",
+    "step1Desc": "Get daily updated market prices for all types of e-waste from authorized recyclers.",
+    "step2Title": "Instant Photo Valuation",
+    "step2Desc": "Snap a photo of circuit boards, batteries, or wire to estimate true material value instantly.",
+    "step3Title": "Guaranteed Direct Payment",
+    "step3Desc": "Hand over to verified recyclers and get paid directly to your UPI or cash ledger.",
+    "getStarted": "Get Started Now"
   }
 }

@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.database import engine, Base
+from app.database import engine, Base, SessionLocal
 from app.models import *  # Ensure all models are registered with Base
+from app.seed import seed_database
 from app.routers import (
     lots_router,
     prices_router,
@@ -12,10 +13,19 @@ from app.routers import (
     sync_router,
     admin_router,
     verify_router,
+    auth_router,
+    collectors_router,
 )
 
 # Initialize database schema tables automatically for prototype development
 Base.metadata.create_all(bind=engine)
+
+# Seed initial database records
+try:
+    with SessionLocal() as db_session:
+        seed_database(db_session)
+except Exception as e:
+    print(f"Database seed warning: {e}")
 
 app = FastAPI(
     title="Kabadiwala Connect API",
@@ -40,6 +50,8 @@ app.include_router(ledger_router)
 app.include_router(sync_router)
 app.include_router(admin_router)
 app.include_router(verify_router)
+app.include_router(auth_router)
+app.include_router(collectors_router)
 
 @app.get("/")
 def root():

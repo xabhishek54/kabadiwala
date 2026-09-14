@@ -10,6 +10,7 @@ class CollectorBase(BaseModel):
     operating_locality: str
     account_type: AccountType = AccountType.independent
     parent_shop_id: Optional[str] = None
+    shop_code: Optional[str] = None
 
 class CollectorCreate(CollectorBase):
     collector_id: Optional[str] = None
