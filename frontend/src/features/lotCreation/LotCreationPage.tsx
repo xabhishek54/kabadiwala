@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../../data/local/db';
-import { classifyImageClient, type ImageClassificationResult } from '../../utils/mlClassifier';
+import { classifyImageClient } from '../../utils/mlClassifier';
 import {
-  Camera, ArrowLeft, Sparkles, Check, RefreshCw
+  Camera, Plus, Trash2, ArrowLeft, Sparkles, RefreshCw,
+  ChevronDown, ImagePlus, CheckCircle2, AlertCircle, Package
 } from 'lucide-react';
 
-/* ─── Category & Sub-Category Visual Items Definition ─── */
+/* ─── Category & Sub-Category Data ─── */
 export interface SubCategoryItem {
   id: string;
   name: string;
@@ -111,87 +112,206 @@ const CATEGORY_GROUPS: CategoryGroup[] = [
   },
 ];
 
+/* ─── Types ─── */
+export type ConditionType = 'intact' | 'damaged' | 'stripped';
+export type SourceType = 'household' | 'commercial' | 'mixed_scrap';
+
+export interface DetectedItem {
+  id: string;
+  photoIndex: number;          // which uploaded photo this came from (0-based)
+  categoryId: string;
+  subCategoryId: string;
+  condition: ConditionType;
+  weightKg: number;
+  aiConfidence: number;
+  isManual?: boolean;          // user added manually
+}
+
+/* ─── Helpers ─── */
+const CONDITION_MULT: Record<ConditionType, number> = { intact: 1.0, damaged: 0.7, stripped: 0.4 };
+
+function getSubItem(catId: string, subId: string): SubCategoryItem {
+  const grp = CATEGORY_GROUPS.find(g => g.id === catId) ?? CATEGORY_GROUPS[0];
+  return grp.subCategories.find(s => s.id === subId) ?? grp.subCategories[0];
+}
+
+function calcItemValue(item: DetectedItem): number {
+  const sub = getSubItem(item.categoryId, item.subCategoryId);
+  return Math.round(sub.basePricePerKg * CONDITION_MULT[item.condition] * item.weightKg);
+}
+
+function newItem(photoIndex: number, catId: string, subId: string, cond: ConditionType, conf: number): DetectedItem {
+  const grp = CATEGORY_GROUPS.find(g => g.id === catId) ?? CATEGORY_GROUPS[0];
+  const resolvedSubId = grp.subCategories.find(s => s.id === subId)
+    ? subId
+    : grp.subCategories[0].id;
+  return {
+    id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+    photoIndex,
+    categoryId: catId,
+    subCategoryId: resolvedSubId,
+    condition: cond,
+    weightKg: 2.0,
+    aiConfidence: conf,
+  };
+}
+
+/* ─── Main Component ─── */
 export const LotCreationPage: React.FC = () => {
   const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Wizard Step (1: Photo, 2: Material & SubCategory, 3: Condition & Source, 4: Weight & Estimate)
-  const [currentStep, setCurrentStep] = useState<number>(1);
+  // Step: 1=Photos, 2=Review Items, 3=Summary & Save
+  const [step, setStep] = useState<1 | 2 | 3>(1);
 
-  // Core State
-  const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
-  const [selectedCatId, setSelectedCatId] = useState<string>('PCB');
-  const [selectedSubCat, setSelectedSubCat] = useState<string>('Motherboard High Grade');
-  const [weightKg, setWeightKg] = useState<number>(2.5);
-  const [condition, setCondition] = useState<'intact' | 'damaged' | 'stripped'>('intact');
-  const [sourceType, setSourceType] = useState<'household' | 'commercial' | 'mixed_scrap'>('household');
-  
-  // UI & AI State
-  const [aiResult, setAiResult] = useState<ImageClassificationResult | null>(null);
-  const [isClassifying, setIsClassifying] = useState<boolean>(false);
-  const [isSaving, setIsSaving] = useState<boolean>(false);
+  // Photos uploaded (max 5)
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [sourceType, setSourceType] = useState<SourceType>('household');
 
-  // Active Category Group & SubCategory Details
-  const activeGroup = CATEGORY_GROUPS.find(g => g.id === selectedCatId) || CATEGORY_GROUPS[0];
-  const activeSubItem = activeGroup.subCategories.find(s => s.id === selectedSubCat) || activeGroup.subCategories[0];
+  // AI scan state
+  const [isScanningAll, setIsScanningAll] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0); // 0–100
 
-  // Pricing Logic
-  const CONDITION_MULT: Record<string, number> = { intact: 1.0, damaged: 0.7, stripped: 0.4 };
-  const SOURCE_MULT: Record<string, number> = { household: 1.0, commercial: 1.05, mixed_scrap: 0.95 };
+  // Detected items list (editable)
+  const [items, setItems] = useState<DetectedItem[]>([]);
 
-  const unitRate = Math.round(activeSubItem.basePricePerKg * CONDITION_MULT[condition] * SOURCE_MULT[sourceType]);
-  const estimatedTotal = Math.round(unitRate * weightKg);
+  // Expanded accordion item id
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const handlePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Save state
+  const [isSaving, setIsSaving] = useState(false);
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const dataUrl = event.target?.result as string;
-      setPhotoDataUrl(dataUrl);
-      setIsClassifying(true);
-      try {
-        const res = await classifyImageClient(dataUrl);
-        setAiResult(res);
-        if (res.category && CATEGORY_GROUPS.some(g => g.id === res.category)) {
-          setSelectedCatId(res.category);
-          const matchedGrp = CATEGORY_GROUPS.find(g => g.id === res.category);
-          if (matchedGrp && matchedGrp.subCategories.length > 0) {
-            setSelectedSubCat(matchedGrp.subCategories[0].id);
-          }
-        }
-        if (res.condition) {
-          setCondition(res.condition);
-        }
-      } catch (err) {
-        console.warn('AI image classification error:', err);
-      } finally {
-        setIsClassifying(false);
-      }
-    };
-    reader.readAsDataURL(file);
+  // ─── Totals ───
+  const totalWeight = items.reduce((s, i) => s + i.weightKg, 0);
+  const totalValue = items.reduce((s, i) => s + calcItemValue(i), 0);
+
+  /* ─── Photo Handlers ─── */
+  const handlePhotosSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+
+    const remaining = 5 - photos.length;
+    const toProcess = files.slice(0, remaining);
+
+    const newUrls: string[] = await Promise.all(
+      toProcess.map(
+        f =>
+          new Promise<string>(res => {
+            const reader = new FileReader();
+            reader.onload = ev => res(ev.target!.result as string);
+            reader.readAsDataURL(f);
+          }),
+      ),
+    );
+
+    setPhotos(prev => [...prev, ...newUrls]);
+    // Reset file input so same file can be re-added
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const removePhoto = (idx: number) => {
+    setPhotos(prev => prev.filter((_, i) => i !== idx));
+    // Remove items that were detected from this photo; re-index the rest
+    setItems(prev =>
+      prev
+        .filter(it => it.photoIndex !== idx)
+        .map(it => ({
+          ...it,
+          photoIndex: it.photoIndex > idx ? it.photoIndex - 1 : it.photoIndex,
+        })),
+    );
+  };
+
+  /* ─── AI Scan All Photos ─── */
+  const runAIScanAll = async () => {
+    if (photos.length === 0) return;
+    setIsScanningAll(true);
+    setScanProgress(0);
+
+    const detected: DetectedItem[] = [];
+
+    for (let i = 0; i < photos.length; i++) {
+      try {
+        const result = await classifyImageClient(photos[i]);
+        // Each photo may produce 1 primary detected item
+        detected.push(
+          newItem(i, result.category ?? 'PCB', '', result.condition ?? 'intact', result.confidence ?? 0.8),
+        );
+      } catch {
+        // fallback if classifier fails
+        detected.push(newItem(i, 'PCB', 'Low Grade Consumer PCB', 'intact', 0.6));
+      }
+      setScanProgress(Math.round(((i + 1) / photos.length) * 100));
+    }
+
+    setItems(prev => {
+      // Merge: remove old AI items that referenced photos, keep manual ones
+      const manualItems = prev.filter(it => it.isManual);
+      return [...detected, ...manualItems];
+    });
+
+    setIsScanningAll(false);
+    setStep(2);
+  };
+
+  /* ─── Item List Mutation Helpers ─── */
+  const updateItem = (id: string, patch: Partial<DetectedItem>) => {
+    setItems(prev =>
+      prev.map(it => {
+        if (it.id !== id) return it;
+        const updated = { ...it, ...patch };
+        // If category changed, reset subCategory to first of new category
+        if (patch.categoryId && patch.categoryId !== it.categoryId) {
+          const grp = CATEGORY_GROUPS.find(g => g.id === patch.categoryId) ?? CATEGORY_GROUPS[0];
+          updated.subCategoryId = grp.subCategories[0].id;
+        }
+        return updated;
+      }),
+    );
+  };
+
+  const deleteItem = (id: string) => {
+    setItems(prev => prev.filter(it => it.id !== id));
+  };
+
+  const addManualItem = () => {
+    const manual: DetectedItem = {
+      ...newItem(0, 'PCB', 'Low Grade Consumer PCB', 'intact', 1.0),
+      isManual: true,
+    };
+    setItems(prev => [...prev, manual]);
+    setExpandedId(manual.id);
+  };
+
+  /* ─── Save Lot ─── */
   const handleSaveLot = async () => {
+    if (items.length === 0) return;
     setIsSaving(true);
+
     const clientUuid = `lot-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
     const nowIso = new Date().toISOString();
-
     const userStr = localStorage.getItem('kabadiwala_user');
     const userObj = userStr ? JSON.parse(userStr) : null;
-    const collectorId = userObj?.id || 'col-demo-101';
+    const collectorId = userObj?.id ?? 'col-demo-101';
+
+    // Dominant category = the one with highest total estimated value
+    const categoryTotals: Record<string, number> = {};
+    for (const item of items) {
+      categoryTotals[item.categoryId] = (categoryTotals[item.categoryId] ?? 0) + calcItemValue(item);
+    }
+    const dominantCategory = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'PCB';
 
     try {
       await db.materials.add({
         lot_id: clientUuid,
-        material_category: selectedCatId as any,
-        sub_category: selectedSubCat,
-        approx_weight_kg: weightKg,
-        condition: condition,
+        material_category: dominantCategory as any,
+        sub_category: items.map(i => i.subCategoryId).join(', '),
+        approx_weight_kg: totalWeight,
+        condition: items[0].condition,
         source_type: sourceType,
-        estimated_value: estimatedTotal,
+        estimated_value: totalValue,
         collector_id: collectorId,
-        photo_local_uri: photoDataUrl || undefined,
+        photo_local_uri: photos[0] ?? undefined,
         created_at: nowIso,
         synced: false,
       } as any);
@@ -199,8 +319,8 @@ export const LotCreationPage: React.FC = () => {
       await db.transactions.add({
         lot_id: clientUuid,
         collector_id: collectorId,
-        material_category: selectedCatId as any,
-        quoted_price: estimatedTotal,
+        material_category: dominantCategory as any,
+        quoted_price: totalValue,
         status: 'created',
         payment_method: 'pending',
         payment_status: 'unpaid',
@@ -215,13 +335,20 @@ export const LotCreationPage: React.FC = () => {
         action: 'upsert',
         payload: {
           lot_id: clientUuid,
-          material_category: selectedCatId,
-          sub_category: selectedSubCat,
-          approx_weight_kg: weightKg,
-          condition,
+          material_category: dominantCategory,
+          sub_category: items.map(i => i.subCategoryId).join(', '),
+          approx_weight_kg: totalWeight,
+          condition: items[0].condition,
           source_type: sourceType,
-          estimated_value: estimatedTotal,
+          estimated_value: totalValue,
           collector_id: collectorId,
+          line_items: items.map(i => ({
+            sub_category: i.subCategoryId,
+            category: i.categoryId,
+            condition: i.condition,
+            weight_kg: i.weightKg,
+            value: calcItemValue(i),
+          })),
         },
         created_at: nowIso,
         synced: false,
@@ -234,229 +361,101 @@ export const LotCreationPage: React.FC = () => {
     }
   };
 
+  /* ─── Step Labels ─── */
+  const STEP_LABELS = ['Photos', 'Review Items', 'Summary'];
+
+  /* ════════════════════════════════════════ RENDER ════════════════════════════════════════ */
   return (
-    <div className="pb-24 pt-3 px-4 max-w-md mx-auto min-h-[85vh] flex flex-col justify-between font-sans text-stone-900">
-      
-      {/* ─── Wizard Header Bar (Step Indicator) ─── */}
+    <div className="pb-28 pt-3 px-4 max-w-md mx-auto min-h-screen flex flex-col gap-4 font-sans text-stone-900 bg-[#F8F6F0]">
+
+      {/* ─── Header ─── */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => currentStep > 1 ? setCurrentStep(currentStep - 1) : navigate(-1)}
-              className="p-1.5 rounded-full hover:bg-stone-200 text-stone-700 font-bold transition-colors"
+              onClick={() => step > 1 ? setStep((step - 1) as 1 | 2 | 3) : navigate(-1)}
+              className="p-1.5 rounded-full hover:bg-stone-200 text-stone-700 transition-colors"
             >
               <ArrowLeft size={20} />
             </button>
             <h2 className="font-extrabold text-stone-900 text-base">Create New Lot</h2>
           </div>
-
-          <span className="text-[11px] font-black bg-[#16A34A] text-white px-3 py-1 rounded-full shadow-xs">
-            Step {currentStep} of 4
+          <span className="text-[11px] font-black bg-[#16A34A] text-white px-3 py-1 rounded-full">
+            Step {step} of 3
           </span>
         </div>
 
-        {/* Wizard Progress Bar */}
-        <div className="w-full bg-stone-200 h-1.5 rounded-full overflow-hidden flex">
-          <div className="bg-[#16A34A] h-full transition-all duration-300" style={{ width: `${(currentStep / 4) * 100}%` }} />
+        {/* Step Progress Bar */}
+        <div className="flex gap-1">
+          {STEP_LABELS.map((label, idx) => (
+            <div key={label} className="flex-1 space-y-0.5">
+              <div className={`h-1.5 rounded-full transition-all duration-300 ${idx < step ? 'bg-[#16A34A]' : 'bg-stone-200'}`} />
+              <div className={`text-[9px] font-black text-center ${idx < step ? 'text-[#16A34A]' : 'text-stone-400'}`}>
+                {label}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════
-          STEP 1: Photo Capture & AI Material Classification
-      ══════════════════════════════════════════════════════════════ */}
-      {currentStep === 1 && (
-        <div className="space-y-4 my-auto">
-          <div className="text-center space-y-1">
-            <h3 className="text-lg font-black text-stone-900">Capture Material Photo</h3>
-            <p className="text-xs text-stone-500 font-medium">Take a photo of scrap material for automatic AI identification</p>
+      {/* ════════════════════════════════════════════════════════
+          STEP 1 — Upload Photos
+      ════════════════════════════════════════════════════════ */}
+      {step === 1 && (
+        <div className="flex flex-col gap-4 flex-1">
+          <div className="text-center space-y-0.5">
+            <h3 className="text-lg font-black text-stone-900">Upload Material Photos</h3>
+            <p className="text-xs text-stone-500">Upload up to 5 photos — AI will identify all items automatically</p>
           </div>
 
-          <div className="relative rounded-3xl overflow-hidden border border-stone-200 shadow-md h-56 bg-stone-900">
-            {photoDataUrl ? (
-              <img src={photoDataUrl} alt="Material preview" className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full bg-gradient-to-br from-emerald-900 via-stone-900 to-stone-950 flex flex-col items-center justify-center text-white p-4 text-center space-y-2">
-                <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-emerald-400 shadow-lg">
-                  <Camera size={36} />
-                </div>
-                <div>
-                  <div className="text-sm font-extrabold">Tap button below to capture photo</div>
-                  <div className="text-[11px] text-emerald-300/80 font-medium">Camera / Image file</div>
-                </div>
-              </div>
-            )}
-
-            <label className="absolute bottom-4 left-4 right-4 bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold text-xs py-3 rounded-2xl flex items-center justify-center gap-2 cursor-pointer shadow-lg active:scale-95 transition-all">
-              <Camera size={16} />
-              <span>{photoDataUrl ? 'Retake Material Photo' : 'Capture Photo Now'}</span>
-              <input type="file" accept="image/*" capture="environment" onChange={handlePhotoCapture} className="hidden" />
-            </label>
-
-            {isClassifying && (
-              <div className="absolute top-3 left-3 right-3 bg-emerald-950/90 backdrop-blur-md border border-emerald-500/40 text-emerald-300 text-xs font-bold px-4 py-2 rounded-2xl flex items-center gap-2 animate-pulse shadow-lg">
-                <RefreshCw size={14} className="animate-spin text-emerald-400" />
-                <span>AI analyzing material image...</span>
-              </div>
-            )}
-          </div>
-
-          {/* AI Suggestion Box */}
-          {aiResult && (
-            <div className="bg-[#F0FDF4] border border-[#DCFCE7] rounded-2xl p-3.5 flex items-center justify-between shadow-xs">
-              <div className="flex items-center gap-2.5">
-                <Sparkles size={18} className="text-[#16A34A] shrink-0" />
-                <div>
-                  <div className="text-[10px] font-extrabold text-emerald-800 uppercase">AI Smart Suggestion</div>
-                  <div className="text-xs font-black text-stone-900">{activeGroup.name} ({activeSubItem.name})</div>
-                </div>
-              </div>
-              <span className="text-[10px] font-black bg-emerald-200 text-emerald-900 px-2.5 py-1 rounded-full">
-                {Math.round((aiResult.confidence || 0.85) * 100)}% Match
-              </span>
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setCurrentStep(2)}
-            className="w-full bg-stone-900 hover:bg-stone-800 text-white font-extrabold py-4 rounded-2xl shadow-md text-sm transition-all active:scale-95 flex items-center justify-center gap-2 mt-4"
-          >
-            <span>Next: Select Category →</span>
-          </button>
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════════════════════════
-          STEP 2: Category & Sub-Category Selection (Visual Cards)
-      ══════════════════════════════════════════════════════════════ */}
-      {currentStep === 2 && (
-        <div className="space-y-4 my-auto">
-          <div className="text-center space-y-1">
-            <h3 className="text-lg font-black text-stone-900">Select Material Category</h3>
-            <p className="text-xs text-stone-500 font-medium">Choose material type & sub-category</p>
-          </div>
-
-          {/* Category Visual Grid */}
-          <div className="grid grid-cols-2 gap-2.5 max-h-56 overflow-y-auto pr-1">
-            {CATEGORY_GROUPS.map((grp) => {
-              const isSelected = selectedCatId === grp.id;
-              return (
+          {/* Photo Grid */}
+          <div className="grid grid-cols-3 gap-2">
+            {photos.map((url, idx) => (
+              <div key={idx} className="relative rounded-2xl overflow-hidden aspect-square border border-stone-200 shadow-sm">
+                <img src={url} alt={`Photo ${idx + 1}`} className="w-full h-full object-cover" />
                 <button
-                  key={grp.id}
                   type="button"
-                  onClick={() => {
-                    setSelectedCatId(grp.id);
-                    setSelectedSubCat(grp.subCategories[0].id);
-                  }}
-                  className={`p-3 rounded-2xl border text-left transition-all ${
-                    isSelected
-                      ? 'bg-gradient-to-br ' + grp.imageBg + ' text-white shadow-md border-transparent ring-2 ring-emerald-500'
-                      : 'bg-white border-stone-200 text-stone-900 hover:bg-stone-50'
-                  }`}
+                  onClick={() => removePhoto(idx)}
+                  className="absolute top-1 right-1 bg-stone-900/80 hover:bg-red-600 text-white rounded-full p-0.5 transition-colors"
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-2xl">{grp.icon}</span>
-                    {isSelected && <Check size={16} className="text-white" />}
-                  </div>
-                  <div className="font-extrabold text-xs mt-1.5 truncate">{grp.name}</div>
-                  <div className={`text-[10px] font-semibold truncate ${isSelected ? 'text-white/80' : 'text-stone-400'}`}>
-                    ₹{grp.subCategories[0].basePricePerKg}/kg
-                  </div>
+                  <Trash2 size={12} />
                 </button>
-              );
-            })}
+                <div className="absolute bottom-1 left-1 bg-stone-900/70 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">
+                  #{idx + 1}
+                </div>
+              </div>
+            ))}
+
+            {/* Add Photo Tile */}
+            {photos.length < 5 && (
+              <label className="aspect-square rounded-2xl border-2 border-dashed border-stone-300 hover:border-[#16A34A] bg-white hover:bg-emerald-50 flex flex-col items-center justify-center cursor-pointer transition-all gap-1 group">
+                <ImagePlus size={22} className="text-stone-400 group-hover:text-[#16A34A] transition-colors" />
+                <span className="text-[10px] font-bold text-stone-400 group-hover:text-[#16A34A] transition-colors text-center">
+                  {photos.length === 0 ? 'Add Photo' : 'Add More'}
+                </span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  capture="environment"
+                  onChange={handlePhotosSelected}
+                  className="hidden"
+                />
+              </label>
+            )}
           </div>
 
-          {/* Sub-Category Options for Selected Category */}
-          <div className="space-y-2 bg-stone-50 p-3 rounded-2xl border border-stone-200">
-            <label className="block text-xs font-extrabold text-stone-900">
-              Sub-Category ({activeGroup.name})
-            </label>
-
-            <div className="space-y-1.5">
-              {activeGroup.subCategories.map((sub) => {
-                const isSubSel = selectedSubCat === sub.id;
-                return (
-                  <button
-                    key={sub.id}
-                    type="button"
-                    onClick={() => setSelectedSubCat(sub.id)}
-                    className={`w-full p-2.5 rounded-xl border text-left text-xs font-bold transition-all flex items-center justify-between ${
-                      isSubSel
-                        ? 'bg-[#16A34A] text-white border-emerald-600 shadow-xs'
-                        : 'bg-white border-stone-200 text-stone-800 hover:bg-stone-100'
-                    }`}
-                  >
-                    <span className="truncate">{sub.name}</span>
-                    <span className={`font-mono text-xs ${isSubSel ? 'text-white' : 'text-[#16A34A]'}`}>
-                      ₹{sub.basePricePerKg}/kg
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+          {/* Photo count hint */}
+          <div className="flex items-center justify-between text-xs text-stone-500">
+            <span>{photos.length}/5 photos added</span>
+            {photos.length > 0 && (
+              <span className="text-[#16A34A] font-bold">AI will scan all photos at once</span>
+            )}
           </div>
 
-          {/* Wizard Buttons */}
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setCurrentStep(1)}
-              className="py-3.5 px-5 rounded-2xl border border-stone-300 text-stone-700 font-extrabold text-xs"
-            >
-              Back
-            </button>
-            <button
-              type="button"
-              onClick={() => setCurrentStep(3)}
-              className="flex-1 bg-stone-900 hover:bg-stone-800 text-white font-extrabold py-3.5 rounded-2xl shadow-md text-xs transition-all active:scale-95 flex items-center justify-center gap-1"
-            >
-              <span>Next: Condition →</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════════════════════════
-          STEP 3: Physical Condition & Source Type
-      ══════════════════════════════════════════════════════════════ */}
-      {currentStep === 3 && (
-        <div className="space-y-4 my-auto">
-          <div className="text-center space-y-1">
-            <h3 className="text-lg font-black text-stone-900">Condition & Source Type</h3>
-            <p className="text-xs text-stone-500 font-medium">Select physical state & source origin of scrap</p>
-          </div>
-
-          {/* Physical Condition Selector */}
-          <div className="space-y-2">
-            <label className="block text-xs font-extrabold text-stone-900">Physical Condition</label>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { id: 'intact', label: 'Intact (अखण्ड)', mult: '100% Rate' },
-                { id: 'damaged', label: 'Damaged (खराब)', mult: '70% Rate' },
-                { id: 'stripped', label: 'Stripped (सोललेला)', mult: '40% Rate' },
-              ].map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setCondition(c.id as any)}
-                  className={`p-3 rounded-2xl text-center transition-all ${
-                    condition === c.id
-                      ? 'bg-[#16A34A] text-white shadow-md border border-emerald-600'
-                      : 'bg-white text-stone-700 border border-stone-200 hover:bg-stone-50'
-                  }`}
-                >
-                  <div className="text-xs font-black">{c.label.split(' ')[0]}</div>
-                  <div className={`text-[10px] font-semibold ${condition === c.id ? 'text-emerald-100' : 'text-stone-400'}`}>
-                    {c.mult}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Source Type Selector */}
+          {/* Source Type Row */}
           <div className="space-y-2">
             <label className="block text-xs font-extrabold text-stone-900">Source Origin</label>
             <div className="grid grid-cols-3 gap-2">
@@ -464,15 +463,15 @@ export const LotCreationPage: React.FC = () => {
                 { id: 'household', label: 'Household', sub: 'घरगुती' },
                 { id: 'commercial', label: 'Commercial', sub: 'व्यावसायिक' },
                 { id: 'mixed_scrap', label: 'Mixed Scrap', sub: 'मिश्र स्क्रॅप' },
-              ].map((s) => (
+              ].map(s => (
                 <button
                   key={s.id}
                   type="button"
-                  onClick={() => setSourceType(s.id as any)}
-                  className={`p-3 rounded-2xl text-center transition-all ${
+                  onClick={() => setSourceType(s.id as SourceType)}
+                  className={`p-3 rounded-2xl text-center transition-all border ${
                     sourceType === s.id
-                      ? 'bg-stone-900 text-white shadow-md border border-stone-900'
-                      : 'bg-white text-stone-700 border border-stone-200 hover:bg-stone-50'
+                      ? 'bg-stone-900 text-white border-stone-900 shadow-md'
+                      : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
                   }`}
                 >
                   <div className="text-xs font-black">{s.label}</div>
@@ -484,98 +483,345 @@ export const LotCreationPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Wizard Buttons */}
-          <div className="flex gap-2 pt-2">
+          {/* Scan CTA */}
+          <button
+            type="button"
+            onClick={runAIScanAll}
+            disabled={photos.length === 0 || isScanningAll}
+            className="w-full bg-[#16A34A] hover:bg-emerald-700 disabled:opacity-40 text-white font-extrabold py-4 rounded-2xl shadow-md text-sm transition-all active:scale-95 flex items-center justify-center gap-2 mt-auto"
+          >
+            {isScanningAll ? (
+              <>
+                <RefreshCw size={18} className="animate-spin" />
+                <span>AI Scanning… {scanProgress}%</span>
+              </>
+            ) : (
+              <>
+                <Sparkles size={18} />
+                <span>{photos.length === 0 ? 'Add photos first' : `Scan ${photos.length} Photo${photos.length > 1 ? 's' : ''} with AI →`}</span>
+              </>
+            )}
+          </button>
+
+          {/* Skip to manual */}
+          <button
+            type="button"
+            onClick={() => { setItems([]); setStep(2); }}
+            className="text-xs text-stone-400 hover:text-stone-700 font-bold text-center transition-colors"
+          >
+            Skip AI scan — add items manually
+          </button>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════
+          STEP 2 — Review / Edit Detected Items
+      ════════════════════════════════════════════════════════ */}
+      {step === 2 && (
+        <div className="flex flex-col gap-3 flex-1">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-black text-stone-900">Detected Items</h3>
+              <p className="text-[11px] text-stone-500">Review, edit subcategory & condition — delete false positives</p>
+            </div>
+            <span className="text-xs font-black bg-stone-100 text-stone-600 px-2.5 py-1 rounded-full border border-stone-200">
+              {items.length} item{items.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+
+          {/* Empty State */}
+          {items.length === 0 && (
+            <div className="flex-1 flex flex-col items-center justify-center text-center gap-3 py-10">
+              <Package size={48} className="text-stone-300" />
+              <div>
+                <div className="text-sm font-bold text-stone-500">No items yet</div>
+                <div className="text-xs text-stone-400">Tap "Add Item" to add materials manually</div>
+              </div>
+            </div>
+          )}
+
+          {/* Items Accordion List */}
+          <div className="space-y-2 overflow-y-auto max-h-[58vh] pr-0.5">
+            {items.map((item, idx) => {
+              const grp = CATEGORY_GROUPS.find(g => g.id === item.categoryId) ?? CATEGORY_GROUPS[0];
+              const sub = grp.subCategories.find(s => s.id === item.subCategoryId) ?? grp.subCategories[0];
+              const itemValue = calcItemValue(item);
+              const isExpanded = expandedId === item.id;
+
+              return (
+                <div
+                  key={item.id}
+                  className={`rounded-2xl border transition-all overflow-hidden ${
+                    isExpanded ? 'border-[#16A34A] shadow-md' : 'border-stone-200 bg-white shadow-sm'
+                  }`}
+                >
+                  {/* ─── Collapsed Header Row ─── */}
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                    className="w-full flex items-center gap-3 p-3 text-left"
+                  >
+                    {/* Photo thumb or category icon */}
+                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0 bg-gradient-to-br ${grp.imageBg}`}>
+                      {grp.icon}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-extrabold text-stone-900 truncate">{sub.name}</span>
+                        {!item.isManual && (
+                          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${
+                            item.aiConfidence >= 0.85
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            AI {Math.round(item.aiConfidence * 100)}%
+                          </span>
+                        )}
+                        {item.isManual && (
+                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 bg-stone-100 text-stone-600">
+                            Manual
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-stone-500 font-semibold">
+                        {item.condition} · {item.weightKg} kg · <span className="text-[#16A34A] font-black">₹{itemValue.toLocaleString('en-IN')}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <ChevronDown
+                        size={16}
+                        className={`text-stone-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                      />
+                    </div>
+                  </button>
+
+                  {/* ─── Expanded Edit Panel ─── */}
+                  {isExpanded && (
+                    <div className="px-3 pb-3 space-y-3 border-t border-stone-100 pt-3 bg-stone-50">
+
+                      {/* Category selector */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-extrabold text-stone-600 uppercase">Category</label>
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {CATEGORY_GROUPS.map(g => (
+                            <button
+                              key={g.id}
+                              type="button"
+                              onClick={() => updateItem(item.id, { categoryId: g.id })}
+                              className={`p-2 rounded-xl text-center transition-all border text-xs ${
+                                item.categoryId === g.id
+                                  ? 'bg-stone-900 text-white border-stone-900'
+                                  : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-100'
+                              }`}
+                            >
+                              <div className="text-base leading-none">{g.icon}</div>
+                              <div className="text-[9px] font-bold mt-0.5 truncate">{g.name.split(' ')[0]}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Sub-category dropdown */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-extrabold text-stone-600 uppercase">Sub-Category</label>
+                        <div className="relative">
+                          <select
+                            value={item.subCategoryId}
+                            onChange={e => updateItem(item.id, { subCategoryId: e.target.value })}
+                            className="w-full appearance-none bg-white border border-stone-200 rounded-xl px-3 py-2.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#16A34A] pr-8"
+                          >
+                            {grp.subCategories.map(s => (
+                              <option key={s.id} value={s.id}>
+                                {s.name} — ₹{s.basePricePerKg}/kg
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown size={14} className="absolute right-2.5 top-3 text-stone-400 pointer-events-none" />
+                        </div>
+                      </div>
+
+                      {/* Condition chips */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-extrabold text-stone-600 uppercase">Condition</label>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {([
+                            { id: 'intact', label: 'Intact', pct: '100%' },
+                            { id: 'damaged', label: 'Damaged', pct: '70%' },
+                            { id: 'stripped', label: 'Stripped', pct: '40%' },
+                          ] as const).map(c => (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onClick={() => updateItem(item.id, { condition: c.id })}
+                              className={`py-2 rounded-xl text-center text-xs font-bold border transition-all ${
+                                item.condition === c.id
+                                  ? 'bg-[#16A34A] text-white border-emerald-600'
+                                  : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-100'
+                              }`}
+                            >
+                              <div className="font-extrabold">{c.label}</div>
+                              <div className={`text-[10px] ${item.condition === c.id ? 'text-emerald-100' : 'text-stone-400'}`}>{c.pct}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Weight input */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-extrabold text-stone-600 uppercase">Weight (kg)</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0.1"
+                            value={item.weightKg}
+                            onChange={e => updateItem(item.id, { weightKg: parseFloat(e.target.value) || 0.5 })}
+                            className="flex-1 text-sm font-black p-2.5 rounded-xl border border-stone-200 bg-white text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                          />
+                          <span className="text-xs font-black text-stone-500">kg</span>
+                        </div>
+                        {/* Quick weight chips */}
+                        <div className="flex gap-1.5 flex-wrap">
+                          {[0.5, 1, 2, 5, 10].map(w => (
+                            <button
+                              key={w}
+                              type="button"
+                              onClick={() => updateItem(item.id, { weightKg: w })}
+                              className={`py-1 px-2.5 rounded-lg text-[10px] font-extrabold border transition-all ${
+                                item.weightKg === w
+                                  ? 'bg-stone-900 text-white border-stone-900'
+                                  : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-50'
+                              }`}
+                            >
+                              {w} kg
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Item value preview */}
+                      <div className="flex items-center justify-between bg-emerald-50 rounded-xl px-3 py-2 border border-emerald-200">
+                        <span className="text-[11px] font-bold text-stone-600">Item Estimated Value</span>
+                        <span className="text-sm font-black text-[#16A34A]">₹{itemValue.toLocaleString('en-IN')}</span>
+                      </div>
+
+                      {/* Delete button */}
+                      <button
+                        type="button"
+                        onClick={() => deleteItem(item.id)}
+                        className="w-full py-2.5 rounded-xl border border-red-200 text-red-600 text-xs font-extrabold flex items-center justify-center gap-1.5 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 size={14} />
+                        Remove This Item
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Add Manual Item */}
+          <button
+            type="button"
+            onClick={addManualItem}
+            className="w-full py-3 rounded-2xl border-2 border-dashed border-stone-300 hover:border-[#16A34A] text-stone-500 hover:text-[#16A34A] text-xs font-extrabold flex items-center justify-center gap-2 transition-all hover:bg-emerald-50"
+          >
+            <Plus size={16} />
+            Add Item Manually
+          </button>
+
+          {/* Navigation */}
+          <div className="flex gap-2 mt-auto pt-2">
             <button
               type="button"
-              onClick={() => setCurrentStep(2)}
+              onClick={() => setStep(1)}
               className="py-3.5 px-5 rounded-2xl border border-stone-300 text-stone-700 font-extrabold text-xs"
             >
               Back
             </button>
             <button
               type="button"
-              onClick={() => setCurrentStep(4)}
-              className="flex-1 bg-stone-900 hover:bg-stone-800 text-white font-extrabold py-3.5 rounded-2xl shadow-md text-xs transition-all active:scale-95 flex items-center justify-center gap-1"
+              onClick={() => setStep(3)}
+              disabled={items.length === 0}
+              className="flex-1 bg-stone-900 hover:bg-stone-800 disabled:opacity-40 text-white font-extrabold py-3.5 rounded-2xl shadow-md text-xs transition-all active:scale-95 flex items-center justify-center gap-1"
             >
-              <span>Next: Weight & Value →</span>
+              Review & Save ({items.length} item{items.length !== 1 ? 's' : ''}) →
             </button>
           </div>
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════════════════
-          STEP 4: Weight Entry & Fair Price Valuation
-      ══════════════════════════════════════════════════════════════ */}
-      {currentStep === 4 && (
-        <div className="space-y-4 my-auto">
-          <div className="text-center space-y-1">
-            <h3 className="text-lg font-black text-stone-900">Weight & Fair Price Estimate</h3>
-            <p className="text-xs text-stone-500 font-medium">Enter approximate weight & review valuation breakdown</p>
+      {/* ════════════════════════════════════════════════════════
+          STEP 3 — Summary & Save
+      ════════════════════════════════════════════════════════ */}
+      {step === 3 && (
+        <div className="flex flex-col gap-4 flex-1">
+          <div className="text-center space-y-0.5">
+            <h3 className="text-base font-black text-stone-900">Lot Summary</h3>
+            <p className="text-xs text-stone-500">Review your entire lot before saving</p>
           </div>
 
-          {/* Weight Input + Preset Chips */}
-          <div className="space-y-2">
-            <label className="block text-xs font-extrabold text-stone-900">Approximate Weight (kg)</label>
-            <div className="relative">
-              <input
-                type="number"
-                step="0.1"
-                min="0.1"
-                value={weightKg}
-                onChange={(e) => setWeightKg(parseFloat(e.target.value) || 1.0)}
-                className="w-full text-2xl font-black p-3.5 rounded-2xl border border-stone-200 bg-white text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#16A34A] shadow-xs"
-              />
-              <span className="absolute right-4 top-4 text-xs font-black text-stone-400 uppercase">kg</span>
+          {/* Lot Overview Card */}
+          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 rounded-3xl p-4 border border-emerald-200 space-y-3 shadow-sm">
+            <div className="flex items-center justify-between text-xs font-bold text-stone-600 pb-2 border-b border-emerald-200/60">
+              <span>Total Items</span>
+              <span className="font-extrabold text-stone-900">{items.length}</span>
             </div>
-
-            <div className="flex gap-2">
-              {[1, 2.5, 5, 10, 25].map((w) => (
-                <button
-                  key={w}
-                  type="button"
-                  onClick={() => setWeightKg(w)}
-                  className={`flex-1 py-2 rounded-xl text-xs font-extrabold border transition-colors ${
-                    weightKg === w
-                      ? 'bg-stone-900 text-white border-stone-900'
-                      : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
-                  }`}
-                >
-                  {w} kg
-                </button>
-              ))}
+            <div className="flex items-center justify-between text-xs font-bold text-stone-600 pb-2 border-b border-emerald-200/60">
+              <span>Total Weight</span>
+              <span className="font-extrabold text-stone-900">{totalWeight.toFixed(1)} kg</span>
             </div>
-          </div>
-
-          {/* Fair Valuation Summary Card */}
-          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/60 rounded-3xl p-4 border border-emerald-200 space-y-2.5 shadow-xs">
-            <div className="flex items-center justify-between text-xs font-bold text-stone-600 border-b border-emerald-200/60 pb-2">
-              <span>Sub-Category Rate</span>
-              <span className="font-extrabold text-stone-900">₹{activeSubItem.basePricePerKg}/kg</span>
+            <div className="flex items-center justify-between text-xs font-bold text-stone-600 pb-2 border-b border-emerald-200/60">
+              <span>Photos</span>
+              <span className="font-extrabold text-stone-900">{photos.length}</span>
             </div>
-
-            <div className="flex items-center justify-between text-xs font-bold text-stone-600 border-b border-emerald-200/60 pb-2">
-              <span>Condition Adjusted Rate ({condition})</span>
-              <span className="font-extrabold text-stone-900">₹{unitRate}/kg</span>
-            </div>
-
             <div className="flex items-center justify-between pt-1">
               <div>
-                <div className="text-[10px] font-black text-stone-500 uppercase">Estimated Total Value</div>
-                <div className="text-2xl font-black text-[#16A34A]">₹{estimatedTotal.toLocaleString('en-IN')}</div>
+                <div className="text-[10px] font-black text-stone-500 uppercase">Total Estimated Value</div>
+                <div className="text-3xl font-black text-[#16A34A]">₹{totalValue.toLocaleString('en-IN')}</div>
               </div>
-
-              <span className="text-[10px] font-bold bg-white text-emerald-800 px-3 py-1 rounded-full border border-emerald-200">
+              <span className="text-[10px] font-bold bg-white text-emerald-800 px-3 py-1.5 rounded-full border border-emerald-200">
                 Fair Market Index
               </span>
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex gap-2 pt-2">
+          {/* Per-Item Compact List */}
+          <div className="space-y-1.5 max-h-44 overflow-y-auto">
+            {items.map((item) => {
+              const grp = CATEGORY_GROUPS.find(g => g.id === item.categoryId) ?? CATEGORY_GROUPS[0];
+              const sub = grp.subCategories.find(s => s.id === item.subCategoryId) ?? grp.subCategories[0];
+              return (
+                <div key={item.id} className="flex items-center gap-2 bg-white rounded-xl px-3 py-2 border border-stone-100">
+                  <span className="text-base">{grp.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] font-bold text-stone-900 truncate">{sub.name}</div>
+                    <div className="text-[10px] text-stone-400 font-semibold">{item.condition} · {item.weightKg} kg</div>
+                  </div>
+                  <div className="text-xs font-black text-[#16A34A] shrink-0">
+                    ₹{calcItemValue(item).toLocaleString('en-IN')}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Disclaimer */}
+          <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-2xl p-3">
+            <AlertCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+            <p className="text-[11px] text-amber-800 font-semibold leading-relaxed">
+              This is an estimated value based on current market rates. Final price is confirmed by the recycler during handover.
+            </p>
+          </div>
+
+          {/* Save CTA */}
+          <div className="flex gap-2 mt-auto">
             <button
               type="button"
-              onClick={() => setCurrentStep(3)}
+              onClick={() => setStep(2)}
               className="py-3.5 px-5 rounded-2xl border border-stone-300 text-stone-700 font-extrabold text-xs"
             >
               Back
@@ -583,16 +829,19 @@ export const LotCreationPage: React.FC = () => {
             <button
               type="button"
               onClick={handleSaveLot}
-              disabled={isSaving}
+              disabled={isSaving || items.length === 0}
               className="flex-1 bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold py-4 rounded-2xl shadow-lg text-sm transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {isSaving ? (
                 <>
                   <RefreshCw size={18} className="animate-spin" />
-                  <span>Saving Lot...</span>
+                  <span>Saving Lot…</span>
                 </>
               ) : (
-                <span>Save Lot & Match Recyclers →</span>
+                <>
+                  <CheckCircle2 size={18} />
+                  <span>Save Lot & Match Recyclers →</span>
+                </>
               )}
             </button>
           </div>
@@ -602,5 +851,3 @@ export const LotCreationPage: React.FC = () => {
     </div>
   );
 };
-
-
