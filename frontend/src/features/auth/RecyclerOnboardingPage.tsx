@@ -10,11 +10,14 @@ export const RecyclerOnboardingPage: React.FC = () => {
   const { t, i18n } = useTranslation();
   const isEn = i18n.language === 'en';
 
+  const provisionalUserStr = typeof window !== 'undefined' ? localStorage.getItem('kabadiwala_user') : null;
+  const provisionalUser = provisionalUserStr ? JSON.parse(provisionalUserStr) : null;
+
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [name, setName] = useState('GreenEarth Recyclers Pune');
-  const [phone, setPhone] = useState('9823011223');
-  const [mpcbRef, setMpcbRef] = useState('MPCB/E-WASTE/2024/099');
-  const [district, setDistrict] = useState('Pune');
+  const [name, setName] = useState(provisionalUser?.name || '');
+  const [phone, setPhone] = useState(provisionalUser?.phone || '');
+  const [mpcbRef, setMpcbRef] = useState('');
+  const [district, setDistrict] = useState(provisionalUser?.district || 'Pune');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [rates, setRates] = useState<Record<string, number>>({
@@ -57,11 +60,14 @@ export const RecyclerOnboardingPage: React.FC = () => {
         materials_accepted: Object.keys(rates),
       });
 
+      const rid = response.recycler_id || `rec-${Date.now()}`;
       const userObj = {
+        id: rid,
+        recycler_id: rid,
+        recyclerId: rid,
         name,
         phone,
         role: 'recycler',
-        recycler_id: response.recycler_id || 'rec-001',
         mpcb_ref: mpcbRef,
         district,
       };

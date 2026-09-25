@@ -3,8 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { QRCodeSVG } from 'qrcode.react';
 import { db, type LocalMaterial, type LocalTransaction } from '../../data/local/db';
-import { getHandoverToken, confirmHandover } from '../../data/remote/apiClient';
-import { CheckCircle, ArrowLeft, ShieldCheck } from 'lucide-react';
+import { getHandoverToken, confirmHandover, API_BASE_URL } from '../../data/remote/apiClient';
+import { CheckCircle, ArrowLeft, ShieldCheck, Copy, ArrowRight } from 'lucide-react';
 
 export const HandoverPage: React.FC = () => {
   const { lotId } = useParams<{ lotId: string }>();
@@ -18,6 +18,7 @@ export const HandoverPage: React.FC = () => {
   const [transaction, setTransaction] = useState<LocalTransaction | null>(null);
   const [qrToken, setQrToken] = useState<string>('');
   const [shortCode, setShortCode] = useState<string>('');
+  const [copiedCode, setCopiedCode] = useState<boolean>(false);
   const [inputShortCode, setInputShortCode] = useState<string>('');
   const [isConfirmed, setIsConfirmed] = useState<boolean>(false);
   const initialMode = currentUser?.role === 'recycler' ? 'recycler' : 'collector';
@@ -27,6 +28,14 @@ export const HandoverPage: React.FC = () => {
   const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isGettingGps, setIsGettingGps] = useState<boolean>(false);
   const [finalValueInput, setFinalValueInput] = useState<string>('');
+
+  const handleCopyCode = () => {
+    if (shortCode) {
+      navigator.clipboard.writeText(shortCode);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    }
+  };
 
   useEffect(() => {
     // Acquire actual browser GPS location
@@ -63,9 +72,45 @@ export const HandoverPage: React.FC = () => {
         }
       }
 
-      const tokenData = await getHandoverToken(lotId);
-      setQrToken(tokenData.handover_token);
-      setShortCode(tokenData.short_code);
+      if (!mat) {
+        try {
+          const res = await fetch(`${API_BASE_URL}/admin/lots`);
+          if (res.ok) {
+            const lots = await res.json();
+            const found = lots.find((l: any) => l.lot_id === lotId);
+            if (found) {
+              setMaterial({
+                lot_id: found.lot_id,
+                material_category: found.category,
+                sub_category: found.sub_category,
+                approx_weight_kg: found.weight_kg,
+                estimated_value: found.estimated_value,
+              } as any);
+              setTransaction({
+                lot_id: found.lot_id,
+                quoted_price: found.estimated_value,
+                recycler_id: found.recycler_id,
+                status: found.status,
+                payment_status: found.payment_status,
+              } as any);
+              setFinalValueInput((found.estimated_value || 0).toString());
+              if (found.status === 'confirmed' || found.status === 'closed') {
+                setIsConfirmed(true);
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('Handover backend lot fallback error:', err);
+        }
+      }
+
+      try {
+        const tokenData = await getHandoverToken(lotId);
+        setQrToken(tokenData.handover_token);
+        setShortCode(tokenData.short_code);
+      } catch (e) {
+        console.warn('Failed to load handover token:', e);
+      }
     }
     loadData();
   }, [lotId]);
@@ -78,10 +123,11 @@ export const HandoverPage: React.FC = () => {
   const handleConfirmHandover = async () => {
     if (!lotId || !codeMatches) return;
     const finalVal = parseFloat(finalValueInput) || transaction?.quoted_price || material?.estimated_value || 0;
+    const activeRecyclerId = transaction?.recycler_id || currentUser?.recycler_id || currentUser?.recyclerId || currentUser?.id || 'rec-pune-001';
 
     await confirmHandover(
       lotId,
-      transaction?.recycler_id || 'rec-001',
+      activeRecyclerId,
       inputShortCode.trim(),
       gpsLocation?.lat,
       gpsLocation?.lng,
@@ -169,31 +215,57 @@ export const HandoverPage: React.FC = () => {
           </button>
         </div>
       ) : mode === 'collector' ? (
-        /* Collector QR Mode */
-        <div className="bg-surface-card rounded-card p-6 border border-surface-border shadow-soft text-center space-y-4">
+        /* Collector QR Mode (Clean & Self-Explanatory) */
+        <div className="bg-white rounded-3xl p-6 border border-stone-200 shadow-md text-center space-y-4">
           <div className="space-y-1">
-            <h3 className="font-bold text-stone-900 text-base">
-              {isEn ? 'Show this QR code to the Buyer / Recycler' : 'रीसायकलर को यह QR कोड दिखाएं'}
+            <h3 className="font-black text-stone-900 text-lg">
+              Digital Handover QR
             </h3>
-            <p className="text-xs text-stone-500">Scan QR Code at physical material handover</p>
+            <p className="text-xs text-stone-500 font-medium">
+              Show to buyer when they arrive for physical material pickup
+            </p>
           </div>
 
           {/* QR Code SVG */}
-          <div className="p-4 bg-white rounded-2xl border-2 border-stone-200 inline-block shadow-sm">
+          <div className="p-4 bg-white rounded-2xl border-2 border-stone-200 inline-block shadow-xs">
             <QRCodeSVG value={qrToken || lotId || 'KC-TOKEN'} size={200} />
           </div>
 
-          {/* Short Code Fallback */}
-          <div className="bg-stone-50 rounded-xl p-3 border border-stone-200">
-            <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider block">
-              {isEn ? '6-Digit Short Code (Alternative)' : 'शॉर्ट कोड (6-Digit Code)'}
-            </span>
-            <span className="text-2xl font-black text-stone-900 tracking-widest">{shortCode}</span>
+          {/* Short Code Fallback with Copy button */}
+          <div className="bg-stone-50 rounded-2xl p-3.5 border border-stone-200 flex items-center justify-between">
+            <div className="text-left">
+              <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider block">
+                6-Digit Short Code (Alternative)
+              </span>
+              <span className="text-2xl font-black text-stone-900 tracking-widest">{shortCode}</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCopyCode}
+              className="bg-stone-200 hover:bg-stone-300 text-stone-800 font-bold text-xs px-3.5 py-2 rounded-xl transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
+            >
+              <Copy size={14} />
+              <span>{copiedCode ? 'Copied ✓' : 'Copy'}</span>
+            </button>
           </div>
 
-          <div className="flex items-center justify-center space-x-1.5 text-xs text-emerald-700 font-semibold bg-emerald-50 py-2 rounded-xl">
+          {/* Verified Hash Badge */}
+          <div className="flex items-center justify-center space-x-1.5 text-xs text-emerald-700 font-bold bg-emerald-50 py-2 rounded-xl border border-emerald-100">
             <ShieldCheck size={16} />
-            <span>{isEn ? 'Tamper-Proof Blockchain Hash Verified' : 'टैम्पर-प्रूफ डिजिटल रसीद (Verifiable Traceable Event)'}</span>
+            <span>Tamper-Proof Blockchain Hash Verified</span>
+          </div>
+
+          {/* Main Action Button */}
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => navigate('/lots')}
+              className="w-full bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold text-sm py-3.5 px-5 rounded-2xl shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Done for Now (Show Later)</span>
+              <ArrowRight size={16} />
+            </button>
           </div>
         </div>
       ) : (

@@ -8,7 +8,7 @@ import {
 
 /* ─── Sidebar nav item data matching reference image ─── */
 const collectorNavItems = [
-  { to: '/home', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/home', label: 'Home', icon: Home, end: true },
   { to: '/lots', label: 'My Lots', icon: Package },
   { to: '/prices', label: 'Price Board', icon: IndianRupee },
   { to: '/recyclers', label: 'Find Recyclers', icon: Search },
@@ -18,11 +18,12 @@ const collectorNavItems = [
 ];
 
 const recyclerNavItems = [
-  { to: '/recycler', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/recycler', label: 'Facility Dashboard', icon: LayoutDashboard, end: true },
   { to: '/recycler/rates', label: 'My Buying Rates', icon: Tag },
   { to: '/admin/anomalies', label: 'Anomaly Engine', icon: ShieldAlert },
-  { to: '/verify', label: 'Verify Hash', icon: BookOpen },
-  { to: '/profile', label: 'My Profile', icon: User },
+  { to: '/minerals', label: 'Minerals Recovery', icon: Factory },
+  { to: '/verify', label: 'Verify Traceability', icon: BookOpen },
+  { to: '/profile', label: 'Facility Profile', icon: User },
 ];
 
 /* Bottom nav tabs for collector */
@@ -35,7 +36,7 @@ const collectorBottomTabs = [
 
 /* Bottom nav tabs for recycler */
 const recyclerBottomTabs = [
-  { to: '/recycler', label: 'Queue', icon: Factory, end: true },
+  { to: '/recycler', label: 'Dashboard', icon: Factory, end: true },
   { to: '/recycler/rates', label: 'Rates', icon: Tag },
   { to: '/admin/anomalies', label: 'Alerts', icon: ShieldAlert },
   { to: '/profile', label: 'Profile', icon: User },

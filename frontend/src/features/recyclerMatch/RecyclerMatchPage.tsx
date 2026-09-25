@@ -66,7 +66,7 @@ export const RecyclerMatchPage: React.FC = () => {
 
           const reasons: string[] = [];
           if (rec.authorization_status === 'verified') reasons.push('MPCB Authorized ✓');
-          if (rate >= 240) font: reasons.push(`Best Price (₹${rate}/kg) ✓`);
+          if (rate >= 240) reasons.push(`Best Price (₹${rate}/kg) ✓`);
           if (pickup) reasons.push('Pickup Available ✓');
           if (dist < 5.0) reasons.push(`Nearby (${dist} km) ✓`);
 

@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../../data/local/db';
+import { fetchRecyclerMatches } from '../../data/remote/apiClient';
 import {
   Camera, IndianRupee, MapPin, ArrowRight,
   Package, CheckCircle2, Clock,
@@ -55,50 +58,118 @@ export const HomePage: React.FC = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<{ name: string; role: string } | null>(null);
   const [district] = useState(localStorage.getItem('kabadiwala_district') || 'Pune, Maharashtra');
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [nearbyRecyclersList, setNearbyRecyclersList] = useState<any[]>(NEARBY_RECYCLERS);
+  const [authorizedCount, setAuthorizedCount] = useState<number>(3);
+
+  // Query live local IndexedDB lots & transactions
+  const liveTransactions = useLiveQuery(() => db.transactions.toArray(), []) || [];
+  const liveMaterials = useLiveQuery(() => db.materials.toArray(), []) || [];
 
   useEffect(() => {
     const raw = localStorage.getItem('kabadiwala_user');
     try { setUser(raw ? JSON.parse(raw) : null); } catch { /* */ }
+
+    // Fetch live recyclers
+    async function loadRecyclers() {
+      try {
+        const matches = await fetchRecyclerMatches('PCB');
+        if (matches && matches.length > 0) {
+          setAuthorizedCount(matches.length);
+          setNearbyRecyclersList(matches.slice(0, 3).map((m: any) => ({
+            id: m.recycler?.recycler_id || m.recycler_id || 'rec-001',
+            name: m.recycler?.name || m.name || 'EcoRecycle Facility',
+            distance: m.distance_km ? `${m.distance_km.toFixed(1)} km` : '2.4 km',
+            authorized: true,
+            rating: m.match_score ? (m.match_score * 5).toFixed(1) : '4.6',
+            reviews: 42,
+            avatarBg: 'bg-emerald-600',
+            avatarText: '🌱',
+          })));
+        }
+      } catch (err) {
+        console.warn('Failed to fetch live recyclers for home page:', err);
+      }
+    }
+    loadRecyclers();
   }, []);
 
-  const firstName = user?.name?.split(' ')[0] || 'Ramesh';
+  const firstName = user?.name?.split(' ')[0] || 'Collector';
 
-  // Desktop Recent Lots sample list merged with live data
-  const sampleRecentLots = [
-    { id: 'lot-101', name: 'Copper Cable', category: 'Cables & Wire', weight: 5, estimate: '₹1,300', range: '1.1k – 1.5k', status: 'Matched', statusColor: 'bg-blue-100 text-blue-800' },
-    { id: 'lot-102', name: 'PCB Boards', category: 'PCBs', weight: 2.5, estimate: '₹520', range: '450 – 600', status: 'Pending', statusColor: 'bg-amber-100 text-amber-800' },
-    { id: 'lot-103', name: 'Mixed E-Waste', category: 'Mixed', weight: 8, estimate: '₹1,800', range: '1.5k – 2.2k', status: 'Draft', statusColor: 'bg-stone-200 text-stone-700' },
-  ];
+  // Compute dynamic metrics
+  const liveTotalWeight = liveMaterials.reduce((acc, m) => acc + (m.approx_weight_kg || 0), 0);
+  const liveTotalPayouts = liveTransactions.reduce((acc, t) => {
+    if (t.payment_status === 'paid' || t.status === 'closed') {
+      return acc + (t.final_sale_value || t.quoted_price || 0);
+    }
+    return acc;
+  }, 0);
+  const liveActiveCount = liveMaterials.filter(m => {
+    const tx = liveTransactions.find(t => t.lot_id === m.lot_id);
+    return !tx || (tx.status !== 'closed' && tx.payment_status !== 'paid');
+  }).length;
+
+  const displayTotalWeight = `${liveTotalWeight} kg`;
+  const displayTotalPayouts = `₹${liveTotalPayouts.toLocaleString('en-IN')}`;
+  const displayActiveLots = liveActiveCount;
+
+  // Desktop Recent Lots list merged with live data
+  const recentLotsList = liveMaterials.slice(0, 5).map(mat => {
+    const tx = liveTransactions.find(t => t.lot_id === mat.lot_id);
+    const isPaid = tx?.payment_status === 'paid' || tx?.status === 'closed';
+    const isMatched = tx?.status === 'matched';
+    return {
+      fullId: mat.lot_id,
+      id: mat.lot_id.length > 12 ? `${mat.lot_id.slice(0, 10)}...` : mat.lot_id,
+      name: mat.sub_category || mat.material_category || 'Scrap Lot',
+      category: mat.material_category,
+      weight: mat.approx_weight_kg,
+      estimate: `₹${(tx?.quoted_price || mat.estimated_value || 0).toLocaleString('en-IN')}`,
+      status: isPaid ? 'Paid' : isMatched ? 'Matched' : 'Draft',
+      statusColor: isPaid ? 'bg-emerald-100 text-emerald-800' : isMatched ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800',
+    };
+  });
 
   return (
-    <div className="pb-24 pt-4 px-4 sm:px-6 md:px-8 max-w-7xl mx-auto space-y-6 font-sans">
+    <div className="pb-24 pt-4 px-4 sm:px-6 md:px-8 max-w-7xl mx-auto space-y-5 font-sans">
       
       {/* ══════════════════════════════════════════════════════════════
-          DESKTOP TOP HEADER BAR (Namaste, Ramesh! + Location + Bell)
+          DESKTOP TOP HEADER BAR
       ══════════════════════════════════════════════════════════════ */}
       <div className="hidden md:flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-black text-stone-900 tracking-tight flex items-center gap-2">
-            👋 Namaste, {firstName}!
-          </h1>
-          <p className="text-sm text-stone-500 font-medium mt-0.5">
-            Let's make recycling simple, safe and profitable.
-          </p>
-        </div>
+        <h1 className="text-2xl font-black text-stone-900 tracking-tight">
+          👋 Namaste, {firstName}!
+        </h1>
 
         <div className="flex items-center gap-3">
-          {/* Location Selector */}
           <div className="flex items-center gap-2 bg-white border border-stone-200 rounded-full px-4 py-2 text-xs font-bold text-stone-800 shadow-xs cursor-pointer hover:border-brand-500 transition-all">
             <MapPin size={15} className="text-brand-600" />
             <span>{district}</span>
           </div>
 
-          {/* Bell Icon */}
-          <button type="button" className="w-9 h-9 rounded-full bg-white border border-stone-200 flex items-center justify-center text-stone-600 hover:text-stone-900 shadow-xs transition-all">
-            <Bell size={16} />
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowNotifications(!showNotifications)}
+              className="w-9 h-9 rounded-full bg-white border border-stone-200 flex items-center justify-center text-stone-600 hover:text-stone-900 shadow-xs transition-all relative"
+            >
+              <Bell size={16} />
+              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500" />
+            </button>
 
-          {/* Avatar Icon */}
+            {showNotifications && (
+              <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl p-3 border border-stone-200 shadow-lg z-50 text-xs space-y-2">
+                <div className="font-bold text-stone-900 border-b pb-1.5 flex justify-between items-center">
+                  <span>Notifications</span>
+                  <button onClick={() => setShowNotifications(false)} className="text-[10px] text-stone-400">Close</button>
+                </div>
+                <div className="p-2 bg-emerald-50 rounded-xl text-emerald-800 font-medium text-[11px]">
+                  ✓ System operational. Live district price updates active.
+                </div>
+              </div>
+            )}
+          </div>
+
           <button type="button" onClick={() => navigate('/profile')} className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-xs">
             <User size={18} />
           </button>
@@ -106,15 +177,12 @@ export const HomePage: React.FC = () => {
       </div>
 
       {/* ══════════════════════════════════════════════════════════════
-          MOBILE HEADER (👋 नमस्ते, Ramesh!)
+          MOBILE HEADER
       ══════════════════════════════════════════════════════════════ */}
-      <div className="md:hidden space-y-1">
+      <div className="md:hidden">
         <h1 className="text-xl font-black text-stone-900 tracking-tight">
-          👋 नमस्ते, {firstName}!
+          👋 Namaste, {firstName}!
         </h1>
-        <p className="text-xs text-stone-500 font-semibold">
-          कबाड़ा नहीं, संसाधन है!
-        </p>
       </div>
 
       {/* ══════════════════════════════════════════════════════════════
@@ -122,50 +190,46 @@ export const HomePage: React.FC = () => {
       ══════════════════════════════════════════════════════════════ */}
       <div className="hidden md:grid grid-cols-4 gap-4">
         {/* Total Intake */}
-        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-2">
+        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-1">
           <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
             <Package size={20} />
           </div>
           <div>
             <div className="text-xs text-stone-500 font-semibold">Total Intake</div>
-            <div className="text-2xl font-black text-stone-900">92 kg</div>
-            <div className="text-xs font-bold text-emerald-600 mt-0.5">↑ 14% this month</div>
+            <div className="text-2xl font-black text-stone-900">{displayTotalWeight}</div>
           </div>
         </div>
 
         {/* Disbursed Payouts */}
-        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-2">
+        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-1">
           <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center">
             <IndianRupee size={20} />
           </div>
           <div>
             <div className="text-xs text-stone-500 font-semibold">Disbursed Payouts</div>
-            <div className="text-2xl font-black text-stone-900">₹29,075</div>
-            <div className="text-xs text-stone-400 font-medium mt-0.5">Direct cash & UPI</div>
+            <div className="text-2xl font-black text-stone-900">{displayTotalPayouts}</div>
           </div>
         </div>
 
         {/* Active Lots */}
-        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-2">
+        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-1">
           <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
             <Clock size={20} />
           </div>
           <div>
             <div className="text-xs text-stone-500 font-semibold">Active Lots</div>
-            <div className="text-2xl font-black text-stone-900">11</div>
-            <div className="text-xs font-bold text-amber-600 mt-0.5">Pending verification</div>
+            <div className="text-2xl font-black text-stone-900">{displayActiveLots}</div>
           </div>
         </div>
 
         {/* Authorized Recyclers */}
-        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-2">
+        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-1">
           <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
             <CheckCircle2 size={20} />
           </div>
           <div>
             <div className="text-xs text-stone-500 font-semibold">Authorized Recyclers</div>
-            <div className="text-2xl font-black text-stone-900">1</div>
-            <div className="text-xs text-stone-400 font-medium mt-0.5">Licensed facility</div>
+            <div className="text-2xl font-black text-stone-900">{authorizedCount}</div>
           </div>
         </div>
       </div>
@@ -181,13 +245,10 @@ export const HomePage: React.FC = () => {
           </div>
           <div className="space-y-1">
             <h2 className="text-lg font-black text-stone-900">Create New Lot</h2>
-            <p className="text-xs text-stone-600 font-medium max-w-sm">
-              Take a photo, identify material, enter weight and get instant value estimate.
-            </p>
             <button
               type="button"
               onClick={() => navigate('/create-lot')}
-              className="mt-2 inline-flex items-center gap-2 bg-[#16A34A] hover:bg-emerald-700 text-white font-bold text-xs px-5 py-2.5 rounded-full shadow-md transition-all active:scale-95"
+              className="mt-1 inline-flex items-center gap-2 bg-[#16A34A] hover:bg-emerald-700 text-white font-bold text-xs px-5 py-2.5 rounded-full shadow-md transition-all active:scale-95 cursor-pointer"
             >
               <span>Start Now</span>
               <ArrowRight size={14} />
@@ -229,73 +290,60 @@ export const HomePage: React.FC = () => {
       </div>
 
       {/* ══════════════════════════════════════════════════════════════
-          MOBILE 2x2 QUICK ACCESS TILES (matches Mobile Screen 1)
+          MOBILE 2x2 QUICK ACCESS TILES (Larger, padded, exact reference match)
       ══════════════════════════════════════════════════════════════ */}
-      <div className="md:hidden grid grid-cols-2 gap-3">
+      <div className="md:hidden grid grid-cols-2 gap-4">
         {/* Tile 1: Price Board */}
         <button
           type="button"
           onClick={() => navigate('/prices')}
-          className="bg-blue-50 border border-blue-100 rounded-2xl p-4 text-left space-y-2 shadow-xs active:scale-95 transition-all"
+          className="bg-[#EFF4FF] border border-[#DCE6FF] rounded-3xl p-5 text-left shadow-xs active:scale-95 transition-all cursor-pointer flex items-center gap-3.5 min-h-[96px]"
         >
-          <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-700 flex items-center justify-center text-xl font-bold">
+          <div className="w-12 h-12 rounded-2xl bg-[#DBE7FE] text-blue-700 flex items-center justify-center text-2xl font-bold shrink-0">
             💰
           </div>
-          <div>
-            <div className="font-bold text-stone-900 text-sm">Price Board</div>
-            <div className="text-[11px] text-stone-500 font-medium mt-0.5">जानें आज का भाव</div>
-          </div>
+          <div className="font-extrabold text-stone-900 text-base leading-tight">Price Board</div>
         </button>
 
         {/* Tile 2: Find Recyclers */}
         <button
           type="button"
           onClick={() => navigate('/recyclers')}
-          className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 text-left space-y-2 shadow-xs active:scale-95 transition-all"
+          className="bg-[#ECFDF5] border border-[#D1FAE5] rounded-3xl p-5 text-left shadow-xs active:scale-95 transition-all cursor-pointer flex items-center gap-3.5 min-h-[96px]"
         >
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-700 flex items-center justify-center text-xl font-bold">
+          <div className="w-12 h-12 rounded-2xl bg-[#A7F3D0] text-emerald-800 flex items-center justify-center text-2xl font-bold shrink-0">
             📍
           </div>
-          <div>
-            <div className="font-bold text-stone-900 text-sm">Find Recyclers</div>
-            <div className="text-[11px] text-stone-500 font-medium mt-0.5">पास में अधिकृत रिसाइकलर</div>
-          </div>
+          <div className="font-extrabold text-stone-900 text-base leading-tight">Find Recyclers</div>
         </button>
 
         {/* Tile 3: My Earnings */}
         <button
           type="button"
           onClick={() => navigate('/ledger')}
-          className="bg-green-50 border border-green-100 rounded-2xl p-4 text-left space-y-2 shadow-xs active:scale-95 transition-all"
+          className="bg-[#F0FDF4] border border-[#DCFCE7] rounded-3xl p-5 text-left shadow-xs active:scale-95 transition-all cursor-pointer flex items-center gap-3.5 min-h-[96px]"
         >
-          <div className="w-10 h-10 rounded-xl bg-green-500/10 text-green-800 flex items-center justify-center text-xl font-bold">
+          <div className="w-12 h-12 rounded-2xl bg-[#BBF7D0] text-green-900 flex items-center justify-center text-2xl font-bold shrink-0">
             ₹
           </div>
-          <div>
-            <div className="font-bold text-stone-900 text-sm">My Earnings</div>
-            <div className="text-[11px] text-stone-500 font-medium mt-0.5">मेरी कमाई</div>
-          </div>
+          <div className="font-extrabold text-stone-900 text-base leading-tight">My Earnings</div>
         </button>
 
         {/* Tile 4: Safety Guide */}
         <button
           type="button"
           onClick={() => navigate('/safety')}
-          className="bg-amber-50 border border-amber-100 rounded-2xl p-4 text-left space-y-2 shadow-xs active:scale-95 transition-all"
+          className="bg-[#FFFBEB] border border-[#FEF3C7] rounded-3xl p-5 text-left shadow-xs active:scale-95 transition-all cursor-pointer flex items-center gap-3.5 min-h-[96px]"
         >
-          <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-700 flex items-center justify-center text-xl font-bold">
+          <div className="w-12 h-12 rounded-2xl bg-[#FDE68A] text-amber-900 flex items-center justify-center text-2xl font-bold shrink-0">
             🛡️
           </div>
-          <div>
-            <div className="font-bold text-stone-900 text-sm">Safety Guide</div>
-            <div className="text-[11px] text-stone-500 font-medium mt-0.5">सुरक्षा नियम</div>
-          </div>
+          <div className="font-extrabold text-stone-900 text-base leading-tight">Safety Guide</div>
         </button>
       </div>
 
       {/* ══════════════════════════════════════════════════════════════
           DESKTOP 2-COLUMN SECTION: Recent Lots (Left) + Nearby Recyclers (Right)
-          (Matches top reference image desktop dashboard layout)
       ══════════════════════════════════════════════════════════════ */}
       <div className="hidden md:grid grid-cols-2 gap-6">
         
@@ -319,8 +367,8 @@ export const HomePage: React.FC = () => {
             </div>
 
             {/* Rows */}
-            {sampleRecentLots.map(lot => (
-              <div key={lot.id} className="grid grid-cols-12 items-center text-xs py-2 hover:bg-stone-50 rounded-xl px-1 transition-colors">
+            {recentLotsList.map(lot => (
+              <div key={lot.fullId} className="grid grid-cols-12 items-center text-xs py-2 hover:bg-stone-50 rounded-xl px-1 transition-colors cursor-pointer" onClick={() => navigate('/lots')}>
                 <span className="col-span-2 font-mono font-semibold text-stone-500">{lot.id}</span>
                 <div className="col-span-4 flex items-center gap-2">
                   <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 flex items-center justify-center font-bold text-xs shrink-0">
@@ -334,7 +382,6 @@ export const HomePage: React.FC = () => {
                 <span className="col-span-2 font-semibold text-stone-700">{lot.weight} kg</span>
                 <div className="col-span-2">
                   <div className="font-bold text-stone-900">{lot.estimate}</div>
-                  <div className="text-[10px] text-stone-400">{lot.range}</div>
                 </div>
                 <div className="col-span-2 text-right">
                   <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full ${lot.statusColor}`}>
@@ -356,7 +403,7 @@ export const HomePage: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-            {NEARBY_RECYCLERS.map(rec => (
+            {nearbyRecyclersList.map(rec => (
               <div key={rec.id} className="flex items-center justify-between p-3 rounded-2xl border border-stone-100 bg-stone-50/60 hover:bg-stone-50 transition-colors">
                 <div className="flex items-center gap-3">
                   <div className={`w-10 h-10 rounded-2xl ${rec.avatarBg} text-white flex items-center justify-center text-lg font-bold shadow-xs shrink-0`}>
@@ -380,7 +427,7 @@ export const HomePage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => navigate('/recyclers')}
-                  className="bg-[#16A34A] hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-xs transition-all active:scale-95"
+                  className="bg-[#16A34A] hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
                 >
                   Select
                 </button>

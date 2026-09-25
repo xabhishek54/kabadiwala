@@ -20,6 +20,16 @@ import { RecyclerRatesPage } from './features/recyclerMode/RecyclerRatesPage';
 
 const AUTH_ROUTES = ['/login', '/onboarding'];
 
+const RequireRole: React.FC<{ allowedRoles: string[]; children: React.ReactNode }> = ({ allowedRoles, children }) => {
+  const userStr = localStorage.getItem('kabadiwala_user');
+  const user = userStr ? JSON.parse(userStr) : null;
+  const role = user?.role || 'collector';
+  if (!allowedRoles.includes(role)) {
+    return <Navigate to={role === 'recycler' ? '/recycler' : '/home'} replace />;
+  }
+  return <>{children}</>;
+};
+
 const AppLayout: React.FC = () => {
   const location = useLocation();
   const isAuthRoute = AUTH_ROUTES.some(r => location.pathname.startsWith(r));
@@ -68,10 +78,10 @@ const AppLayout: React.FC = () => {
           <Route path="/verify/:identifier" element={<VerifyPage />} />
           <Route path="/profile" element={<ProfilePage />} />
 
-          {/* Recycler routes */}
-          <Route path="/recycler" element={<RecyclerDashboardPage />} />
-          <Route path="/recycler/rates" element={<RecyclerRatesPage />} />
-          <Route path="/admin/anomalies" element={<AnomalyPage />} />
+          {/* Recycler / Admin routes with role protection */}
+          <Route path="/recycler" element={<RequireRole allowedRoles={['recycler']}><RecyclerDashboardPage /></RequireRole>} />
+          <Route path="/recycler/rates" element={<RequireRole allowedRoles={['recycler']}><RecyclerRatesPage /></RequireRole>} />
+          <Route path="/admin/anomalies" element={<RequireRole allowedRoles={['recycler', 'admin']}><AnomalyPage /></RequireRole>} />
 
           {/* Legacy redirect for old "/" price board route */}
           <Route path="/price-board" element={<PriceBoardPage />} />

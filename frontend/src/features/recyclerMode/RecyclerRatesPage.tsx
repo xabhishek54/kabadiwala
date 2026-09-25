@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Save, CheckCircle2, Factory, RefreshCw, MapPin } from 'lucide-react';
-import { updateRecyclerRates } from '../../data/remote/apiClient';
+import { updateRecyclerRates, API_BASE_URL } from '../../data/remote/apiClient';
 import { LocationPickerModal } from '../../components/LocationPickerModal';
 
 export const RecyclerRatesPage: React.FC = () => {
@@ -47,7 +47,8 @@ export const RecyclerRatesPage: React.FC = () => {
       try {
         const u = JSON.parse(rawUser);
         if (u.name) setRecyclerName(u.name);
-        if (u.recyclerId) setRecyclerId(u.recyclerId);
+        const rid = u.recycler_id || u.recyclerId || u.id;
+        if (rid) setRecyclerId(rid);
       } catch {}
     }
   }, []);
@@ -72,7 +73,7 @@ export const RecyclerRatesPage: React.FC = () => {
     try {
       await updateRecyclerRates(recyclerId, rates);
       // Also update pickup/service config
-      await fetch(`http://localhost:8000/recyclers/${encodeURIComponent(recyclerId)}/config`, {
+      await fetch(`${API_BASE_URL}/recyclers/${encodeURIComponent(recyclerId)}/config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

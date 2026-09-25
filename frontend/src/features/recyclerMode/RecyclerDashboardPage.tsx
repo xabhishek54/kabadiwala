@@ -6,6 +6,7 @@ import {
   Award, ShieldCheck, RefreshCw, Layers, ShieldAlert
 } from 'lucide-react';
 import { db } from '../../data/local/db';
+import { API_BASE_URL } from '../../data/remote/apiClient';
 
 interface AdminLot {
   lot_id: string;
@@ -76,11 +77,13 @@ export const RecyclerDashboardPage: React.FC = () => {
       });
 
       // 2. Backend lots
-      const lotsRes: AdminLot[] = await fetch('http://localhost:8000/admin/lots')
+      const lotsRes: AdminLot[] = await fetch(`${API_BASE_URL}/admin/lots`)
         .then(r => (r.ok ? r.json() : []))
         .catch(() => []);
 
-      // Scoped mock datasets for demo accounts
+      const scopedBackendLots = lotsRes.filter(l => !l.recycler_id || l.recycler_id === recyclerId);
+
+      // Scoped mock datasets for demo accounts (only used if no local or backend lots exist)
       const facilityMockLots: Record<string, AdminLot[]> = {
         'rec-pune-001': [
           { lot_id: 'lot-pune-101', category: 'PCB', sub_category: 'Server Motherboards & RAM', weight_kg: 25.0, condition: 'intact', estimated_value: 6500, collector_id: 'col-demo-101', status: 'matched', payment_status: 'unpaid', recycler_id: 'rec-pune-001' },
@@ -97,10 +100,11 @@ export const RecyclerDashboardPage: React.FC = () => {
         ],
       };
 
-      const fallbackList = facilityMockLots[recyclerId] || facilityMockLots['rec-pune-001'];
+      const realLots = [...localLots, ...scopedBackendLots];
+      const fallbackList = realLots.length === 0 ? (facilityMockLots[recyclerId] || facilityMockLots['rec-pune-001']) : [];
 
       // Combine & deduplicate
-      const combined = [...localLots, ...lotsRes.filter(l => !l.recycler_id || l.recycler_id === recyclerId), ...fallbackList];
+      const combined = [...realLots, ...fallbackList];
       const uniqueLotsMap = new Map<string, AdminLot>();
       combined.forEach(l => {
         if (!uniqueLotsMap.has(l.lot_id)) uniqueLotsMap.set(l.lot_id, l);

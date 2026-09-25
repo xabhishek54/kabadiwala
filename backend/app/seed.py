@@ -73,7 +73,7 @@ def seed_database(db: Session):
             "materials_accepted": ["PCB", "BATTERY", "CABLE", "LCD_PANEL", "CRT", "MOTOR_MAGNET", "MIXED_PLASTIC"],
             "authorization_status": AuthorizationStatus.verified,
             "authorization_ref_no": "MPCB/E-WASTE/2024/089",
-            "contact_phone": "9876543210",
+            "contact_phone": "9888888888",
             "offered_rates": {"PCB": 260.0, "BATTERY": 90.0, "CABLE": 150.0, "LCD_PANEL": 110.0, "CRT": 40.0, "MOTOR_MAGNET": 70.0, "MIXED_PLASTIC": 25.0},
             "pickup_available": True,
         },

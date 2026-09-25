@@ -177,6 +177,10 @@ export const LotCreationPage: React.FC = () => {
     const clientUuid = `lot-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
     const nowIso = new Date().toISOString();
 
+    const userStr = localStorage.getItem('kabadiwala_user');
+    const userObj = userStr ? JSON.parse(userStr) : null;
+    const collectorId = userObj?.id || 'col-demo-101';
+
     try {
       await db.materials.add({
         lot_id: clientUuid,
@@ -186,7 +190,7 @@ export const LotCreationPage: React.FC = () => {
         condition: condition,
         source_type: sourceType,
         estimated_value: estimatedTotal,
-        collector_id: 'col-001',
+        collector_id: collectorId,
         photo_local_uri: photoDataUrl || undefined,
         created_at: nowIso,
         synced: false,
@@ -194,7 +198,7 @@ export const LotCreationPage: React.FC = () => {
 
       await db.transactions.add({
         lot_id: clientUuid,
-        collector_id: 'col-001',
+        collector_id: collectorId,
         material_category: selectedCatId as any,
         quoted_price: estimatedTotal,
         status: 'created',
@@ -217,6 +221,7 @@ export const LotCreationPage: React.FC = () => {
           condition,
           source_type: sourceType,
           estimated_value: estimatedTotal,
+          collector_id: collectorId,
         },
         created_at: nowIso,
         synced: false,

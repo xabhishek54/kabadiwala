@@ -13,7 +13,7 @@ export const SafetyPage: React.FC = () => {
       title: t('safety.batteryTitle'),
       text: t('safety.batteryTip'),
       bg: 'bg-amber-50/80 border-amber-200/80',
-      badge: 'उच्च जोखिम (High Risk)',
+      badge: t('safety.batteryBadge'),
       badgeColor: 'bg-amber-100 text-amber-800',
     },
     {
@@ -22,7 +22,7 @@ export const SafetyPage: React.FC = () => {
       title: t('safety.crtTitle'),
       text: t('safety.crtTip'),
       bg: 'bg-rose-50/80 border-rose-200/80',
-      badge: 'कांच / सीसा hazard',
+      badge: t('safety.crtBadge'),
       badgeColor: 'bg-rose-100 text-rose-800',
     },
     {
@@ -31,7 +31,7 @@ export const SafetyPage: React.FC = () => {
       title: t('safety.cableTitle'),
       text: t('safety.cableTip'),
       bg: 'bg-orange-50/80 border-orange-200/80',
-      badge: 'पर्यावरण नियम',
+      badge: t('safety.cableBadge'),
       badgeColor: 'bg-orange-100 text-orange-800',
     },
     {
@@ -40,7 +40,7 @@ export const SafetyPage: React.FC = () => {
       title: t('safety.acidTitle'),
       text: t('safety.acidTip'),
       bg: 'bg-red-50/80 border-red-200/80',
-      badge: 'रासायनिक खतरा',
+      badge: t('safety.acidBadge'),
       badgeColor: 'bg-red-100 text-red-800',
     },
     {
@@ -49,7 +49,7 @@ export const SafetyPage: React.FC = () => {
       title: t('safety.smokeTitle'),
       text: t('safety.smokeTip'),
       bg: 'bg-purple-50/80 border-purple-200/80',
-      badge: 'धुआं निर्देश',
+      badge: t('safety.smokeBadge'),
       badgeColor: 'bg-purple-100 text-purple-800',
     },
     {
@@ -58,7 +58,7 @@ export const SafetyPage: React.FC = () => {
       title: t('safety.ppeTitle'),
       text: t('safety.ppeTip'),
       bg: 'bg-emerald-50/80 border-emerald-200/80',
-      badge: 'दैनिक सुरक्षा',
+      badge: t('safety.ppeBadge'),
       badgeColor: 'bg-emerald-100 text-emerald-800',
     },
   ];
