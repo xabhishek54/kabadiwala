@@ -17,7 +17,9 @@ export async function flushSyncOutbox(): Promise<{ processed: number; success: b
       return { processed: 0, success: true };
     }
 
-    const collectorId = localStorage.getItem('kabadiwala_collector_id') || 'col-demo-101';
+    const userStr = localStorage.getItem('kabadiwala_user');
+    const userObj = userStr ? JSON.parse(userStr) : null;
+    const collectorId = localStorage.getItem('kabadiwala_collector_id') || userObj?.id || 'col-demo-101';
     const payloadItems = unsyncedItems.map((item) => ({
       client_uuid: item.client_uuid,
       entity_type: item.entity_type,
@@ -68,7 +70,7 @@ export async function flushSyncOutbox(): Promise<{ processed: number; success: b
   }
 }
 
-// Auto-trigger sync on online event & visibility change
+// Auto-trigger sync on online event & visibility change & module initialization
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
     flushSyncOutbox();
@@ -78,4 +80,8 @@ if (typeof window !== 'undefined') {
       flushSyncOutbox();
     }
   });
+  // Initial flush on startup
+  setTimeout(() => {
+    flushSyncOutbox();
+  }, 1000);
 }

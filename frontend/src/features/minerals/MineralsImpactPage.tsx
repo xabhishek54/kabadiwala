@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Sparkles, Cpu, RefreshCw, BarChart2 } from 'lucide-react';
+import { API_BASE_URL } from '../../data/remote/apiClient';
 
 interface MineralImpactData {
   unit: string;
@@ -15,7 +16,7 @@ export const MineralsImpactPage: React.FC = () => {
   const fetchImpact = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/admin/minerals/impact');
+      const res = await fetch(`${API_BASE_URL}/admin/minerals/impact`);
       if (res.ok) {
         const json = await res.json();
         setData(json);

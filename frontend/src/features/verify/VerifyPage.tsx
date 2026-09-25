@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { ShieldCheck, ShieldAlert, Search, Package, Award, UserCheck, Factory, QrCode, X } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
+import { API_BASE_URL } from '../../data/remote/apiClient';
 
 interface VerifyDetails {
   type: string;
@@ -29,7 +30,7 @@ export const VerifyPage: React.FC = () => {
     setSearched(true);
 
     try {
-      const res = await fetch(`http://localhost:8000/verify/${encodeURIComponent(idToSearch.trim())}`);
+      const res = await fetch(`${API_BASE_URL}/verify/${encodeURIComponent(idToSearch.trim())}`);
       if (res.ok) {
         const json = await res.json();
         setResult(json);

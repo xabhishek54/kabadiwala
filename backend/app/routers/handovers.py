@@ -32,25 +32,30 @@ def generate_short_code(length: int = 6) -> str:
 @router.get("/{lot_id}/qr-token")
 def get_handover_qr_token(lot_id: str, db: Session = Depends(get_db)):
     tx = db.query(Transaction).filter(Transaction.lot_id == lot_id).first()
-    if not tx:
-        raise HTTPException(status_code=404, detail="Transaction not found")
 
-    short_code = generate_short_code()
+    existing_event = db.query(TraceabilityEvent).filter(
+        TraceabilityEvent.lot_id == lot_id,
+        TraceabilityEvent.handover_reference_no.isnot(None)
+    ).order_by(TraceabilityEvent.timestamp.desc()).first()
 
-    # Log token generation event
-    event = TraceabilityEvent(
-        lot_id=lot_id,
-        event_type=tx.status,
-        actor=EventActor.collector,
-        handover_reference_no=short_code,
-        notes="Generated handover token QR and short code",
-    )
-    db.add(event)
-    db.commit()
+    if existing_event and existing_event.handover_reference_no:
+        short_code = existing_event.handover_reference_no
+    else:
+        short_code = generate_short_code()
+        # Log token generation event
+        event = TraceabilityEvent(
+            lot_id=lot_id,
+            event_type=tx.status if tx else TransactionStatus.draft,
+            actor=EventActor.collector,
+            handover_reference_no=short_code,
+            notes="Generated handover token QR and short code",
+        )
+        db.add(event)
+        db.commit()
 
     return {
         "lot_id": lot_id,
-        "handover_token": f"KC-{lot_id[:8]}-{short_code}",
+        "handover_token": f"KC-{lot_id[:8] if lot_id else '00000000'}-{short_code}",
         "short_code": short_code,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }

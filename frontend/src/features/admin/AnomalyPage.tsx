@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ShieldAlert, AlertTriangle, CheckCircle, RefreshCw, Cpu } from 'lucide-react';
-import { fetchAnomalies, type AnomalyRecord } from '../../data/remote/apiClient';
+import { fetchAnomalies, resolveAnomaly, type AnomalyRecord } from '../../data/remote/apiClient';
 
 export const AnomalyPage: React.FC = () => {
   const { t } = useTranslation();
@@ -53,16 +53,13 @@ export const AnomalyPage: React.FC = () => {
     loadAnomalies();
   }, []);
 
-  const handleResolve = async (lotId: string) => {
+  const handleResolve = async (lotId: string, action: 'clean' | 'fraud' = 'clean') => {
     // Optimistic update first
     setResolvedLots((prev) => new Set(prev).add(lotId));
     try {
-      await fetch(`http://localhost:8000/admin/anomalies/${encodeURIComponent(lotId)}/resolve`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-      });
-    } catch {
-      // Backend offline — optimistic state still shows resolved for the session
+      await resolveAnomaly(lotId, action);
+    } catch (err) {
+      console.warn('Backend resolve anomaly error:', err);
     }
   };
 
@@ -147,22 +144,43 @@ export const AnomalyPage: React.FC = () => {
                   </span>
                 </div>
 
-                <div className="mt-3 bg-stone-50 rounded-xl p-3 space-y-1 text-xs text-stone-700 font-medium border border-stone-200">
-                  <div className="flex justify-between">
-                    <span>Quoted Value:</span>
-                    <span className="font-bold text-rose-600">₹{item.quoted_price}</span>
+                <div className="mt-3 bg-stone-50 rounded-xl p-3 space-y-2 text-xs text-stone-700 font-medium border border-stone-200">
+                  <div className="grid grid-cols-2 gap-2 text-xs pb-1 border-b border-stone-200/60">
+                    <div>
+                      <span className="text-stone-400 font-semibold block text-[10px]">QUOTED RATE</span>
+                      <span className="font-extrabold text-rose-600 text-sm">₹{item.quoted_price}</span>
+                      <span className="text-[10px] text-stone-500 block">
+                        (₹{item.unit_price_per_kg || Math.round(item.quoted_price / (item.weight_kg || 5))}/kg)
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-stone-400 font-semibold block text-[10px]">EXPECTED MEDIAN</span>
+                      <span className="font-extrabold text-stone-900 text-sm">₹{item.median_price}</span>
+                      <span className="text-[10px] text-stone-500 block">
+                        (₹{item.category_median_price || Math.round(item.median_price / (item.weight_kg || 5))}/kg)
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Median Market Value:</span>
-                    <span className="font-bold text-stone-900">₹{item.median_price}</span>
+
+                  <div className="flex justify-between items-center text-xs">
+                    <span>Price Deviation:</span>
+                    <span className="font-black text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                      +{Math.round(((item.quoted_price - item.median_price) / (item.median_price || 1)) * 100)}%
+                    </span>
                   </div>
-                  <div className="flex justify-between">
+
+                  <div className="flex justify-between items-center text-xs">
                     <span>Condition Signal:</span>
-                    <span className="font-bold capitalize">{item.condition_signal}</span>
+                    <span className="font-bold capitalize bg-amber-100 text-amber-900 px-2 py-0.5 rounded">
+                      {item.condition_signal}
+                    </span>
                   </div>
+
                   {(item.flagged_reasons ?? []).length > 0 && (
-                    <div className="pt-1 text-[11px] text-stone-500 italic">
-                      Reason: {(item.flagged_reasons ?? []).join(', ')}
+                    <div className="pt-1 text-[11px] text-stone-600 font-normal">
+                      <span className="font-bold text-stone-700">Flagged Reason: </span>
+                      <span>{(item.flagged_reasons ?? []).join(', ')}</span>
                     </div>
                   )}
                 </div>
@@ -176,14 +194,14 @@ export const AnomalyPage: React.FC = () => {
                   <div className="mt-3 flex space-x-2">
                     <button
                       type="button"
-                      onClick={() => handleResolve(item.lot_id)}
+                      onClick={() => handleResolve(item.lot_id, 'clean')}
                       className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-xl text-xs transition-all active:scale-95 shadow-sm"
                     >
                       {t('anomaly.markClean')}
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleResolve(item.lot_id)}
+                      onClick={() => handleResolve(item.lot_id, 'fraud')}
                       className="flex-1 bg-stone-200 hover:bg-stone-300 text-stone-800 font-bold py-2 rounded-xl text-xs transition-all active:scale-95"
                     >
                       {t('anomaly.flagFraud')}

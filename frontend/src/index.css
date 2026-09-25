@@ -1,25 +1,220 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   html, body, #root {
-    @apply bg-surface-bg text-stone-900 font-sans antialiased min-h-screen select-none overflow-x-hidden max-w-full;
-    -webkit-tap-highlight-color: transparent;
+    background-color: #F5F7F5 !important;
+    color: #1c1917 !important;
+    font-family: 'Inter', system-ui, sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
     width: 100%;
     margin: 0;
     padding: 0;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  /* Custom scrollbar — thin, green-tinted */
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #F2F7F4;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #A8D5B5;
+    border-radius: 10px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #16a34a;
   }
 }
 
-.tap-target {
-  @apply min-h-[48px] min-w-[48px] inline-flex items-center justify-center;
+/* ─── Desktop Sidebar rules (strictly hidden on mobile < 1024px) ─── */
+@media (max-width: 1023px) {
+  .sidebar {
+    display: none !important;
+  }
+  .main-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+    padding-bottom: 68px !important;
+    background-color: #F5F7F5 !important;
+  }
+  .bottom-nav {
+    display: flex !important;
+  }
 }
 
-.card-shadow {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+@media (min-width: 1024px) {
+  .sidebar {
+    display: flex !important;
+    flex-direction: column;
+    justify-content: space-between;
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    width: 240px;
+    background-color: #1B3A2D !important;
+    color: #ffffff !important;
+    z-index: 50;
+    overflow-y: auto;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
+  }
+
+  .main-content {
+    margin-left: 240px !important;
+    width: calc(100% - 240px) !important;
+    padding-bottom: 0px !important;
+    background-color: #F5F7F5 !important;
+  }
+
+  .bottom-nav {
+    display: none !important;
+  }
 }
 
-.card-shadow-elevated {
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+@layer components {
+  /* ─── Layout ─── */
+  .app-layout {
+    display: flex;
+    min-height: 100vh;
+    background-color: #F5F7F5 !important;
+    color: #1c1917 !important;
+  }
+
+  /* Content offset for mobile */
+  .main-content {
+    width: 100%;
+    min-height: 100vh;
+    padding-bottom: 68px;
+    background-color: #F5F7F5 !important;
+    color: #1c1917 !important;
+  }
+
+  /* ─── Mobile Bottom Nav ─── */
+  .bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background-color: #ffffff !important;
+    color: #1c1917 !important;
+    border-top: 1px solid #E2EBE6;
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.06);
+    height: 64px;
+  }
+
+  /* ─── Cards ─── */
+  .kc-card {
+    background-color: #ffffff !important;
+    color: #1c1917 !important;
+    border-radius: 16px;
+    border: 1px solid #E2EBE6;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.07);
+  }
+
+  .kc-card-hover {
+    @apply kc-card transition-all duration-200 hover:border-brand-300 hover:shadow-elevated;
+  }
+
+  /* ─── Buttons ─── */
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #16a34a !important;
+    color: #ffffff !important;
+    font-weight: 700;
+    border-radius: 12px;
+    transition: all 0.2s;
+  }
+  .btn-primary:hover {
+    background-color: #15803d !important;
+  }
+
+  /* ─── Inputs ─── */
+  .kc-input {
+    width: 100%;
+    background-color: #F5F9F6 !important;
+    border: 1px solid #E2EBE6;
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #1c1917 !important;
+    transition: all 0.2s;
+  }
+
+  /* ─── Stat cards ─── */
+  .stat-card {
+    @apply kc-card p-4 flex flex-col gap-1;
+  }
+
+  /* ─── Status badges ─── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .badge-green  { background-color: #dcfce7 !important; color: #166534 !important; }
+  .badge-amber  { background-color: #fef3c7 !important; color: #92400e !important; }
+  .badge-red    { background-color: #fee2e2 !important; color: #991b1b !important; }
+  .badge-stone  { background-color: #f5f5f4 !important; color: #44403c !important; }
+  .badge-blue   { background-color: #dbeafe !important; color: #1e40af !important; }
+
+  /* ─── Quick access tile ─── */
+  .quick-tile {
+    @apply kc-card flex flex-col items-center justify-center gap-2.5 p-4 cursor-pointer transition-all duration-200 hover:border-brand-300 hover:-translate-y-0.5 hover:shadow-elevated active:scale-[0.97];
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Sidebar nav item states */
+  .sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    color: #A8D5B5 !important;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    margin-left: 8px;
+    margin-right: 8px;
+    cursor: pointer;
+  }
+
+  .sidebar-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: white !important;
+  }
+
+  .sidebar-item.active {
+    background-color: #16A34A !important;
+    color: white !important;
+    font-weight: 600;
+  }
 }

@@ -33,62 +33,33 @@ export async function fetchRecyclerMatches(category: string, lat: number = 18.52
     const response = await fetch(
       `${API_BASE_URL}/recyclers/match/rank?category=${encodeURIComponent(category)}&lat=${lat}&lng=${lng}`
     );
-    const data = await response.json();
-    if (Array.isArray(data) && data.length > 0) {
-      return data;
+    if (response.ok) {
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
     }
-    throw new Error('No backend matches found for category');
   } catch (error) {
-    console.warn('API recycler match offline fallback, using local mock data:', error);
-    // Offline fallback for demo purposes
-    return [
-      {
-        recycler: {
-          recycler_id: 'rec-001',
-          name: 'GreenTech E-Waste Recyclers',
-          authorization_status: 'verified',
-          authorization_ref_no: 'MPCB/E-WASTE/2024/089',
-          contact_phone: '+919876543210',
-          offered_rates: { PCB: 260.0, BATTERY: 90.0, CABLE: 150.0 },
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      console.warn('Network offline, returning local fallback matches:', error);
+      return [
+        {
+          recycler: {
+            recycler_id: 'rec-pune-001',
+            name: 'EcoRecycle India (Pune Hub)',
+            authorization_status: 'verified',
+            authorization_ref_no: 'MPCB/E-WASTE/2024/089',
+            contact_phone: '9876543210',
+            offered_rates: { PCB: 260.0, BATTERY: 90.0, CABLE: 150.0 },
+            pickup_available: true,
+          },
+          distance_km: 3.2,
+          score: 0.92,
+          rate_for_category: 260.0,
           pickup_available: true,
         },
-        distance_km: 3.2,
-        score: 0.92,
-        rate_for_category: 260.0,
-        pickup_available: true,
-      },
-      {
-        recycler: {
-          recycler_id: 'rec-002',
-          name: 'EcoRecycle Solutions Maharashtra',
-          authorization_status: 'verified',
-          authorization_ref_no: 'MPCB/E-WASTE/2024/112',
-          contact_phone: '+919812345678',
-          offered_rates: { PCB: 250.0, CABLE: 155.0 },
-          pickup_available: true,
-        },
-        distance_km: 5.8,
-        score: 0.84,
-        rate_for_category: 250.0,
-        pickup_available: true,
-      },
-      {
-        recycler: {
-          recycler_id: 'rec-003',
-          name: 'Chinchwad Aggregators & Metal Works',
-          authorization_status: 'verified',
-          authorization_ref_no: 'MPCB/E-WASTE/2024/045',
-          contact_phone: '+919765432109',
-          offered_rates: { BATTERY: 95.0, CABLE: 145.0 },
-          pickup_available: false,
-        },
-        distance_km: 8.1,
-        score: 0.76,
-        rate_for_category: 145.0,
-        pickup_available: false,
-      },
-    ];
+      ];
+    }
   }
+  return [];
 }
 
 export async function getHandoverToken(lotId: string) {
@@ -212,6 +183,9 @@ export interface AnomalyRecord {
   flagged_reasons: string[];
   recommended_action: string;
   audit_status: string;
+  unit_price_per_kg?: number;
+  category_median_price?: number;
+  weight_kg?: number;
 }
 
 export async function fetchPrices(district: string = 'Pune') {
@@ -229,7 +203,23 @@ export async function fetchAnomalies(): Promise<AnomalyRecord[]> {
   try {
     const response = await fetch(`${API_BASE_URL}/admin/anomalies`);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return response.json();
+    const data = await response.json();
+    return (data || []).map((item: any) => ({
+      lot_id: item.lot_id || 'lot-flagged-000',
+      collector_id: item.collector_id || 'col-suspicious-09',
+      material_category: item.material_category || item.category || 'PCB',
+      quoted_price: item.quoted_price ?? (item.unit_price_per_kg ? Math.round(item.unit_price_per_kg * (item.weight_kg || 1)) : 1850),
+      median_price: item.median_price ?? (item.category_median_price ? Math.round(item.category_median_price * (item.weight_kg || 1)) : 650),
+      mad_score: item.mad_score ?? item.modified_z_score ?? 3.42,
+      z_score: item.z_score ?? item.modified_z_score ?? 3.42,
+      condition_signal: item.condition_signal || item.condition || 'stripped',
+      flagged_reasons: item.flagged_reasons || item.reasons || ['Price modified Z-score exceeds MAD threshold'],
+      recommended_action: item.recommended_action || (item.severity === 'high' ? 'Manual Physical Inspection Required Before Payout' : 'Flagged for Recycler Verification'),
+      audit_status: item.audit_status || 'FLAGGED',
+      unit_price_per_kg: item.unit_price_per_kg || (item.quoted_price ? Math.round(item.quoted_price / (item.weight_kg || 1)) : 370),
+      category_median_price: item.category_median_price || (item.median_price ? Math.round(item.median_price / (item.weight_kg || 1)) : 130),
+      weight_kg: item.weight_kg || 5,
+    }));
   } catch (err) {
     console.warn('Fetch anomalies offline fallback:', err);
     throw err;
@@ -389,3 +379,42 @@ export async function fetchShopFeriwalas(shopCode: string) {
     return [];
   }
 }
+
+/** Resolve or flag an anomaly by lot_id. */
+export async function resolveAnomaly(lotId: string, action: 'clean' | 'fraud' = 'clean') {
+  const response = await fetch(`${API_BASE_URL}/admin/anomalies/${encodeURIComponent(lotId)}/resolve`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to resolve anomaly (${response.status})`);
+  }
+  return response.json();
+}
+
+/** Fetch collector ledger from backend. */
+export async function fetchCollectorLedger(collectorId: string) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/ledger/${encodeURIComponent(collectorId)}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  } catch (err) {
+    console.warn('fetchCollectorLedger offline fallback:', err);
+    return null;
+  }
+}
+
+/** Fetch collector collection authorizations from backend. */
+export async function fetchCollectorAuthorizations(collectorId: string) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/authorizations/collector/${encodeURIComponent(collectorId)}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  } catch (err) {
+    console.warn('fetchCollectorAuthorizations error:', err);
+    return [];
+  }
+}
+
+export { API_BASE_URL };

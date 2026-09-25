@@ -87,16 +87,7 @@ def update_lot_status(
     if not tx:
         material = db.query(Material).filter(Material.lot_id == lot_id).first()
         if not material:
-            material = Material(
-                lot_id=lot_id,
-                material_category=MaterialCategory.PCB,
-                sub_category="PCB",
-                approx_weight_kg=5.0,
-                estimated_value=1200.0,
-                collector_id="col-001"
-            )
-            db.add(material)
-            db.commit()
+            raise HTTPException(status_code=404, detail=f"Lot or material '{lot_id}' not found")
 
         tx = Transaction(
             lot_id=lot_id,
@@ -157,15 +148,53 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     }
 
 
+from pydantic import BaseModel
+from app.models.traceability import TraceabilityEvent
+from app.models.enums import EventActor
+
+class AnomalyResolvePayload(BaseModel):
+    action: Optional[str] = "clean"
+
+
 @router.patch("/anomalies/{lot_id}/resolve")
-def resolve_flagged_anomaly(lot_id: str, db: Session = Depends(get_db)):
-    """Mark an anomaly audit flag as resolved by admin."""
-    # Ensure lot exists or mock resolve
-    material = db.query(Material).filter(Material.lot_id == lot_id).first()
+def resolve_flagged_anomaly(
+    lot_id: str,
+    payload: Optional[AnomalyResolvePayload] = None,
+    db: Session = Depends(get_db)
+):
+    """Mark an anomaly audit flag as resolved or fraud by admin."""
+    action = payload.action if (payload and payload.action) else "clean"
+    tx = db.query(Transaction).filter(Transaction.lot_id == lot_id).first()
+    
+    note = f"Anomaly flag for lot {lot_id} marked as {action.upper()} by admin."
+    if tx:
+        if action == "fraud":
+            tx.status = TransactionStatus.closed
+        
+        event = TraceabilityEvent(
+            lot_id=lot_id,
+            event_type=tx.status,
+            actor=EventActor.recycler,
+            notes=note,
+        )
+        db.add(event)
+        db.commit()
+    else:
+        # Create traceability record even if standalone material/lot
+        event = TraceabilityEvent(
+            lot_id=lot_id,
+            event_type=TransactionStatus.draft,
+            actor=EventActor.recycler,
+            notes=note,
+        )
+        db.add(event)
+        db.commit()
+
     return {
         "status": "resolved",
+        "action": action,
         "lot_id": lot_id,
-        "message": f"Anomaly flag for lot {lot_id} marked as resolved.",
+        "message": note,
     }
 
 

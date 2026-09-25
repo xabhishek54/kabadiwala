@@ -7,7 +7,7 @@ import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../data/local/db';
-import { fetchShopFeriwalas } from '../../data/remote/apiClient';
+import { fetchShopFeriwalas, fetchCollectorAuthorizations } from '../../data/remote/apiClient';
 
 interface Feriwala {
   collector_id: string;
@@ -21,46 +21,62 @@ export const ProfilePage: React.FC = () => {
   const { t, i18n } = useTranslation();
   const isEn = i18n.language === 'en';
 
-  const [accountType, setAccountType] = useState<'independent' | 'shop' | 'sub_collector' | 'recycler'>('recycler');
-  const [displayName, setDisplayName] = useState<string>('EcoRecycle Center');
-  const [phone, setPhone] = useState<string>('9823011223');
-  const [userRole, setUserRole] = useState<string>('recycler');
-  const [locality, setLocality] = useState<string>('Pune');
-  const [shopCode, setShopCode] = useState<string | null>(null);
-  const [mpcbRef, setMpcbRef] = useState<string>('MPCB/E-WASTE/2024/099');
+  const userRaw = typeof window !== 'undefined' ? localStorage.getItem('kabadiwala_user') : null;
+  const initialUser = userRaw ? JSON.parse(userRaw) : null;
+
+  const [accountType, setAccountType] = useState<'independent' | 'shop' | 'sub_collector' | 'recycler'>(initialUser?.accountType || initialUser?.role || 'independent');
+  const [displayName, setDisplayName] = useState<string>(initialUser?.name || 'Collector');
+  const [phone, setPhone] = useState<string>(initialUser?.phone || '');
+  const [userRole, setUserRole] = useState<string>(initialUser?.role || 'collector');
+  const [locality, setLocality] = useState<string>(initialUser?.district || 'Pune');
+  const [shopCode, setShopCode] = useState<string | null>(initialUser?.shopCode || localStorage.getItem('kabadiwala_shop_code') || null);
+  const [mpcbRef, setMpcbRef] = useState<string>(initialUser?.mpcb_ref || initialUser?.authorization_ref_no || '');
+  const [authBadgeRef, setAuthBadgeRef] = useState<string>(initialUser?.auth_badge_ref || `AUTH-2024-${(initialUser?.id || 'DEMO').slice(-4)}`);
   const [feriwalas, setFeriwalas] = useState<Feriwala[]>([]);
   const [loadingFeriwalas, setLoadingFeriwalas] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showQRGuide, setShowQRGuide] = useState(false);
 
-  // Load user from localStorage on mount
+  // Load user from localStorage on mount & fetch backend authorization
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem('kabadiwala_user');
-      if (raw) {
-        const u = JSON.parse(raw);
-        if (u.name) setDisplayName(u.name);
-        if (u.phone) setPhone(u.phone);
-        if (u.role) setUserRole(u.role);
-        if (u.accountType) setAccountType(u.accountType);
-        if (u.district) setLocality(u.district);
-        if (u.shopCode) setShopCode(u.shopCode);
-        if (u.mpcb_ref) setMpcbRef(u.mpcb_ref);
+    async function initProfile() {
+      try {
+        const raw = localStorage.getItem('kabadiwala_user');
+        if (raw) {
+          const u = JSON.parse(raw);
+          if (u.name) setDisplayName(u.name);
+          if (u.phone) setPhone(u.phone);
+          if (u.role) setUserRole(u.role);
+          if (u.accountType) setAccountType(u.accountType);
+          if (u.district) setLocality(u.district);
+          if (u.shopCode) setShopCode(u.shopCode);
+          if (u.mpcb_ref) setMpcbRef(u.mpcb_ref);
+          const badgeRef = u.auth_badge_ref || u.mpcb_ref || `AUTH-2024-${(u.id || 'DEMO').slice(-4)}`;
+          setAuthBadgeRef(badgeRef);
 
-        if (u.role === 'recycler') {
-          setAccountType('recycler');
+          if (u.role === 'recycler') {
+            setAccountType('recycler');
+          }
+
+          if (u.id) {
+            const auths = await fetchCollectorAuthorizations(u.id);
+            if (auths && auths.length > 0) {
+              setAuthBadgeRef(auths[0].authorization_id || auths[0].authorization_ref_no || badgeRef);
+            }
+          }
         }
-      }
 
-      const savedType = localStorage.getItem('kabadiwala_account_type') as any;
-      if (savedType && savedType !== 'shop') {
-        setAccountType(savedType);
+        const savedType = localStorage.getItem('kabadiwala_account_type') as any;
+        if (savedType && savedType !== 'shop') {
+          setAccountType(savedType);
+        }
+        const savedCode = localStorage.getItem('kabadiwala_shop_code');
+        if (savedCode) setShopCode(savedCode);
+      } catch (err) {
+        console.warn('Profile init error:', err);
       }
-      const savedCode = localStorage.getItem('kabadiwala_shop_code');
-      if (savedCode) setShopCode(savedCode);
-    } catch {
-      // safe fallback
     }
+    initProfile();
   }, []);
 
   // Load real feriwalas from backend when user is a collector shop owner
@@ -250,11 +266,11 @@ export const ProfilePage: React.FC = () => {
 
             <p className="text-xs text-stone-700 font-medium">
               Issued by: <strong className="text-stone-900">EcoRecycle India (MPCB Verified)</strong><br />
-              Ref No: <span className="font-mono text-stone-900 font-bold">AUTH-2024-8902</span>
+              Ref No: <span className="font-mono text-stone-900 font-bold">{authBadgeRef}</span>
             </p>
 
             <NavLink
-              to="/verify/AUTH-2024-8902"
+              to={`/verify/${encodeURIComponent(authBadgeRef)}`}
               className="tap-target w-full bg-white border border-emerald-300 hover:border-emerald-500 text-emerald-800 font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center space-x-1.5 shadow-xs"
             >
               <ShieldCheck size={16} className="text-emerald-600" />

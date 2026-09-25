@@ -64,7 +64,13 @@
     "smokeTitle": "PCB Fume Protection",
     "smokeTip": "Desoldering or heating circuit boards generates toxic fumes; work only in ventilated areas!",
     "ppeTitle": "Personal Protective Gear",
-    "ppeTip": "Always wear thick protective gloves and sturdy boots when sorting sharp metal scrap!"
+    "ppeTip": "Always wear thick protective gloves and sturdy boots when sorting sharp metal scrap!",
+    "batteryBadge": "High Risk",
+    "crtBadge": "Glass / Lead Hazard",
+    "cableBadge": "Environmental Rules",
+    "acidBadge": "Chemical Hazard",
+    "smokeBadge": "Toxic Smoke Fumes",
+    "ppeBadge": "Daily Safety Gear"
   },
   "handover": {
     "title": "Digital Handover & QR",
