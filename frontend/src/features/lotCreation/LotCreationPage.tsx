@@ -140,11 +140,18 @@ function calcItemValue(item: DetectedItem): number {
   return Math.round(sub.basePricePerKg * CONDITION_MULT[item.condition] * item.weightKg);
 }
 
-function newItem(photoIndex: number, catId: string, subId: string, cond: ConditionType, conf: number): DetectedItem {
+function newItem(
+  photoIndex: number,
+  catId: string,
+  subCategoryHint: string | undefined,
+  cond: ConditionType,
+  conf: number,
+): DetectedItem {
   const grp = CATEGORY_GROUPS.find(g => g.id === catId) ?? CATEGORY_GROUPS[0];
-  const resolvedSubId = grp.subCategories.find(s => s.id === subId)
-    ? subId
-    : grp.subCategories[0].id;
+  // Try to match the hint; fall back to first sub-category of the group
+  const resolvedSubId =
+    grp.subCategories.find(s => s.id === subCategoryHint)?.id ??
+    grp.subCategories[0].id;
   return {
     id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
     photoIndex,
@@ -222,7 +229,7 @@ export const LotCreationPage: React.FC = () => {
     );
   };
 
-  /* ─── AI Scan All Photos ─── */
+  /* ─── AI Scan All Photos — one photo can yield multiple items ─── */
   const runAIScanAll = async () => {
     if (photos.length === 0) return;
     setIsScanningAll(true);
@@ -232,20 +239,27 @@ export const LotCreationPage: React.FC = () => {
 
     for (let i = 0; i < photos.length; i++) {
       try {
-        const result = await classifyImageClient(photos[i]);
-        // Each photo may produce 1 primary detected item
-        detected.push(
-          newItem(i, result.category ?? 'PCB', '', result.condition ?? 'intact', result.confidence ?? 0.8),
-        );
+        // classifyImageClient now returns an ARRAY — one entry per material type detected
+        const results = await classifyImageClient(photos[i]);
+        for (const res of results) {
+          detected.push(
+            newItem(
+              i,
+              res.category ?? 'PCB',
+              res.subCategoryHint,
+              res.condition ?? 'intact',
+              res.confidence ?? 0.7,
+            ),
+          );
+        }
       } catch {
-        // fallback if classifier fails
-        detected.push(newItem(i, 'PCB', 'Low Grade Consumer PCB', 'intact', 0.6));
+        detected.push(newItem(i, 'PCB', undefined, 'intact', 0.55));
       }
       setScanProgress(Math.round(((i + 1) / photos.length) * 100));
     }
 
     setItems(prev => {
-      // Merge: remove old AI items that referenced photos, keep manual ones
+      // Keep existing manual items; replace all AI-detected ones
       const manualItems = prev.filter(it => it.isManual);
       return [...detected, ...manualItems];
     });
