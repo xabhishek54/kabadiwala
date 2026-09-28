@@ -4,7 +4,7 @@ export interface LocalMaterial {
   lot_id: string;
   material_category: string;
   sub_category: string;
-  description?: string;
+  description?: string;      // full text description of the material
   image_ref?: string;
   approx_weight_kg: number;
   condition: 'intact' | 'damaged' | 'stripped';
@@ -13,6 +13,9 @@ export interface LocalMaterial {
   source_type: 'household' | 'commercial' | 'mixed_scrap';
   estimated_value: number;
   collector_id: string;
+  collection_lat?: number;   // GPS at collection point
+  collection_lng?: number;
+  collection_address?: string; // Reverse-geocoded address
   created_at: string;
 }
 
@@ -47,13 +50,52 @@ export interface LocalTransaction {
   lot_id: string;
   collector_id: string;
   recycler_id?: string;
+  recycler_name?: string;          // denormalized for offline display
+  recycler_auth_ref?: string;      // recycler authorization reference (MPCB ref)
+  recycler_phone?: string;         // recycler contact phone
+  recycler_facility_address?: string; // recycler location
   status: 'draft' | 'quoted' | 'matched' | 'handed_over' | 'confirmed' | 'paid' | 'closed';
   quoted_price?: number;
-  final_sale_value?: number;
+  final_sale_value?: number;       // actual settled price after handover
   payment_method: 'cash' | 'upi' | 'pending';
   payment_status: 'unpaid' | 'paid';
+  collection_lat?: number;         // GPS at collection
+  collection_lng?: number;
+  collection_address?: string;
+  handover_lat?: number;           // GPS at handover point
+  handover_lng?: number;
+  handover_address?: string;
+  pickup_scheduled_date?: string;   // e.g. "2026-09-28"
+  pickup_exact_time?: string;       // e.g. "14:30"
+  pickup_window?: 'morning' | 'afternoon' | 'evening';
+  pickup_notes?: string;
+  pickup_confirmed_by_recycler?: boolean;
+  pickup_confirmed_at?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface LocalNotification {
+  id?: number;
+  recipient_id: string;        // collector_id or recycler_id
+  title: string;
+  message: string;
+  type: 'match_request' | 'pickup_confirmed' | 'schedule_updated' | 'status_update';
+  lot_id: string;
+  read: boolean;
+  created_at: string;
+}
+
+export interface LocalSafetyLog {
+  id?: number;
+  lot_id?: string;
+  material_name: string;
+  category: string;
+  hazard_level: 'low' | 'medium' | 'high';
+  hazard_type: string;            // e.g. "Thermal Runaway", "Lead Acid Electrolyte", "Phosphor Vapor"
+  handling_instruction: string;
+  action_taken: string;
+  timestamp: string;
 }
 
 export interface SyncOutboxItem {
@@ -82,16 +124,20 @@ export class KabadiwalaDatabase extends Dexie {
   transactions!: Table<LocalTransaction, string>;
   syncOutbox!: Table<SyncOutboxItem, number>;
   profile!: Table<LocalProfile, string>;
+  notifications!: Table<LocalNotification, number>;
+  safetyHistory!: Table<LocalSafetyLog, number>;
 
   constructor() {
     super('KabadiwalaConnectDB');
-    this.version(1).stores({
+    this.version(3).stores({
       materials: 'lot_id, material_category, collector_id, created_at',
       priceCache: '[category+district], category, district',
       recyclers: 'recycler_id, authorization_status',
-      transactions: 'lot_id, collector_id, status, payment_status',
+      transactions: 'lot_id, collector_id, recycler_id, status, payment_status',
       syncOutbox: '++id, client_uuid, entity_type, synced, created_at',
       profile: 'profile_id, account_type, district',
+      notifications: '++id, recipient_id, read, created_at, type',
+      safetyHistory: '++id, hazard_level, category, timestamp',
     });
   }
 }

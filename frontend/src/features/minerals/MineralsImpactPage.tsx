@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Sparkles, Cpu, RefreshCw, BarChart2 } from 'lucide-react';
+import { Shield, Sparkles, Cpu, RefreshCw, BarChart2, Leaf, Globe } from 'lucide-react';
 import { API_BASE_URL } from '../../data/remote/apiClient';
 
 interface MineralImpactData {
@@ -48,115 +48,158 @@ export const MineralsImpactPage: React.FC = () => {
     fetchImpact();
   }, []);
 
-  const mineralInfo: Record<string, { label: string; symbol: string; color: string; desc: string }> = {
-    lithium: { label: 'Lithium', symbol: 'Li', color: 'bg-emerald-500 text-white', desc: 'EV Batteries & Grid Storage' },
-    cobalt: { label: 'Cobalt', symbol: 'Co', color: 'bg-blue-600 text-white', desc: 'High-density Li-Ion Cathodes' },
-    neodymium: { label: 'Neodymium', symbol: 'Nd', color: 'bg-purple-600 text-white', desc: 'Rare-Earth Permanent Magnets' },
-    tantalum: { label: 'Tantalum', symbol: 'Ta', color: 'bg-amber-600 text-white', desc: 'Miniature Capacitors in Mobile/PCBs' },
-    gallium: { label: 'Gallium', symbol: 'Ga', color: 'bg-indigo-600 text-white', desc: 'Semiconductors & 5G Chips' },
-    indium: { label: 'Indium', symbol: 'In', color: 'bg-rose-600 text-white', desc: 'LCD/Touchscreen ITO Coatings' },
-    copper: { label: 'Copper', symbol: 'Cu', color: 'bg-orange-600 text-white', desc: 'Electrical Wiring & Power Grids' },
+  const mineralInfo: Record<string, { label: string; symbol: string; color: string; desc: string; maxKg: number }> = {
+    lithium: { label: 'Lithium', symbol: 'Li', color: 'bg-emerald-600 text-white', desc: 'EV Batteries & Grid Storage', maxKg: 50 },
+    cobalt: { label: 'Cobalt', symbol: 'Co', color: 'bg-blue-600 text-white', desc: 'High-density Li-Ion Cathodes', maxKg: 100 },
+    neodymium: { label: 'Neodymium', symbol: 'Nd', color: 'bg-purple-600 text-white', desc: 'Rare-Earth Permanent Magnets', maxKg: 80 },
+    tantalum: { label: 'Tantalum', symbol: 'Ta', color: 'bg-amber-600 text-white', desc: 'Miniature Capacitors in Mobile/PCBs', maxKg: 2 },
+    gallium: { label: 'Gallium', symbol: 'Ga', color: 'bg-indigo-600 text-white', desc: 'Semiconductors & 5G Chips', maxKg: 1 },
+    indium: { label: 'Indium', symbol: 'In', color: 'bg-rose-600 text-white', desc: 'LCD/Touchscreen ITO Coatings', maxKg: 0.5 },
+    copper: { label: 'Copper', symbol: 'Cu', color: 'bg-orange-600 text-white', desc: 'Electrical Wiring & Power Grids', maxKg: 500 },
   };
 
-  return (
-    <div className="pb-24 pt-4 px-4 max-w-md mx-auto space-y-4">
-      {/* Header Banner */}
-      <div className="bg-stone-900 text-white rounded-2xl p-4 shadow-elevated border border-stone-800 space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-10 h-10 rounded-xl bg-amber-500 text-stone-900 flex items-center justify-center font-bold shadow-md">
-              <Cpu size={22} />
-            </div>
-            <div>
-              <h2 className="text-base font-bold leading-tight flex items-center space-x-1.5">
-                <span>Critical Minerals Dashboard</span>
-                <Sparkles size={14} className="text-amber-400" />
-              </h2>
-              <p className="text-[11px] text-stone-400">JNARDDC & Ministry of Mines Strategic Mandate</p>
-            </div>
-          </div>
+  const totalRawGrams = data?.mineral_estimates ? Object.values(data.mineral_estimates).reduce((a, b) => a + b, 0) : 0;
+  const totalRecoveryKg = (totalRawGrams / 1000).toFixed(1);
 
-          <button
-            onClick={fetchImpact}
-            className="p-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 transition-colors"
-          >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-          </button>
+  return (
+    <div className="pb-24 pt-4 px-4 sm:px-6 md:px-8 max-w-7xl mx-auto space-y-6 font-sans text-stone-900">
+      {/* Compact Header */}
+      <div className="bg-white rounded-3xl p-4 sm:p-5 border border-stone-200/80 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+            <Cpu size={22} />
+          </div>
+          <div>
+            <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-stone-900 flex items-center space-x-2">
+              <span>Critical Minerals Dashboard & Recovery Portal</span>
+              <Sparkles size={16} className="text-amber-500 shrink-0" />
+            </h2>
+            <p className="text-xs text-stone-500 font-medium">
+              JNARDDC & Ministry of Mines Strategic Mandate for Circular Economy & Critical Mineral Security.
+            </p>
+          </div>
         </div>
 
-        <div className="bg-stone-800/80 rounded-xl p-3 border border-stone-700 flex items-center justify-between text-xs">
-          <div>
-            <span className="text-stone-400 block text-[10px]">Total E-Waste Processed</span>
-            <span className="text-base font-black text-amber-400">
-              {data ? `${data.total_e_waste_processed_kg.toLocaleString('en-IN')} kg` : '0 kg'}
-            </span>
+        <button
+          type="button"
+          onClick={fetchImpact}
+          className="w-full sm:w-auto bg-stone-900 hover:bg-stone-800 text-white font-extrabold px-4 py-2.5 rounded-2xl flex items-center justify-center space-x-2 shadow-xs transition-all cursor-pointer text-xs shrink-0"
+        >
+          <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+          <span>Refresh Impact</span>
+        </button>
+      </div>
+
+      {/* Metrics Banner - 3 columns on all screen sizes */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+        <div className="bg-white rounded-2xl sm:rounded-3xl p-3 sm:p-5 border border-stone-200/80 shadow-xs space-y-1 min-w-0">
+          <div className="flex items-center justify-between text-stone-500 text-[10px] sm:text-xs font-extrabold uppercase tracking-tight sm:tracking-wider">
+            <span className="truncate">E-Waste Intake</span>
+            <BarChart2 size={15} className="text-[#16A34A] shrink-0 hidden sm:inline" />
           </div>
-          <div className="text-right">
-            <span className="text-stone-400 block text-[10px]">Geographic Scope</span>
-            <span className="font-bold text-stone-200">{data?.district || 'Pune Hub'}</span>
+          <p className="text-lg sm:text-3xl font-black text-stone-900 truncate">
+            {data ? `${data.total_e_waste_processed_kg.toLocaleString('en-IN')} kg` : '0 kg'}
+          </p>
+          <p className="text-[9px] sm:text-xs text-emerald-600 font-bold leading-tight line-clamp-1 sm:line-clamp-none">Traceable intake</p>
+        </div>
+
+        <div className="bg-white rounded-2xl sm:rounded-3xl p-3 sm:p-5 border border-stone-200/80 shadow-xs space-y-1 min-w-0">
+          <div className="flex items-center justify-between text-stone-500 text-[10px] sm:text-xs font-extrabold uppercase tracking-tight sm:tracking-wider">
+            <span className="truncate">Recovered</span>
+            <Leaf size={15} className="text-amber-500 shrink-0 hidden sm:inline" />
           </div>
+          <p className="text-lg sm:text-3xl font-black text-amber-600">{totalRecoveryKg} kg</p>
+          <p className="text-[9px] sm:text-xs text-amber-700 font-bold leading-tight line-clamp-1 sm:line-clamp-none">Raw secondary</p>
+        </div>
+
+        <div className="bg-white rounded-2xl sm:rounded-3xl p-3 sm:p-5 border border-stone-200/80 shadow-xs space-y-1 min-w-0">
+          <div className="flex items-center justify-between text-stone-500 text-[10px] sm:text-xs font-extrabold uppercase tracking-tight sm:tracking-wider">
+            <span className="truncate">Monitoring Hub</span>
+            <Globe size={15} className="text-blue-600 shrink-0 hidden sm:inline" />
+          </div>
+          <p className="text-base sm:text-xl font-black text-stone-900 truncate">{data?.district || 'Pune'}</p>
+          <p className="text-[9px] sm:text-xs text-stone-500 font-medium leading-tight line-clamp-1 sm:line-clamp-none">JNARDDC hub</p>
         </div>
       </div>
 
-      {/* Critical Minerals Cards */}
-      <div className="space-y-2.5">
-        <h3 className="font-bold text-stone-900 text-sm flex items-center justify-between">
-          <span className="flex items-center space-x-1.5">
-            <BarChart2 size={16} className="text-brand-600" />
-            <span>Recoverable Mineral Potential</span>
-          </span>
-          <span className="text-[11px] font-normal text-stone-500">Estimates in Grams (g)</span>
-        </h3>
+      {/* Critical Minerals Cards Grid */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-black text-stone-900 text-lg flex items-center space-x-2">
+            <Sparkles size={20} className="text-amber-500" />
+            <span>Recoverable Critical & Strategic Minerals</span>
+          </h3>
+          <span className="text-xs font-semibold text-stone-500">Estimates in Grams & Kilograms</span>
+        </div>
 
         {data && data.mineral_estimates ? (
-          Object.entries(data.mineral_estimates).map(([key, val]) => {
-            const info = mineralInfo[key] || {
-              label: key.toUpperCase(),
-              symbol: key.slice(0, 2).toUpperCase(),
-              color: 'bg-stone-600 text-white',
-              desc: 'Strategic Industrial Mineral',
-            };
-            const kgVal = val >= 1000 ? (val / 1000).toFixed(2) + ' kg' : val.toFixed(1) + ' g';
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Object.entries(data.mineral_estimates).map(([key, val]) => {
+              const info = mineralInfo[key] || {
+                label: key.toUpperCase(),
+                symbol: key.slice(0, 2).toUpperCase(),
+                color: 'bg-stone-600 text-white',
+                desc: 'Strategic Industrial Mineral',
+                maxKg: 100,
+              };
+              const kgValNum = val / 1000;
+              const kgVal = val >= 1000 ? kgValNum.toFixed(2) + ' kg' : val.toFixed(1) + ' g';
+              const progressPct = Math.min(100, Math.round((kgValNum / info.maxKg) * 100));
 
-            return (
-              <div
-                key={key}
-                className="bg-surface-card rounded-card p-3.5 border border-surface-border shadow-soft flex items-center justify-between"
-              >
-                <div className="flex items-center space-x-3">
-                  <div className={`w-10 h-10 rounded-xl font-mono font-black flex items-center justify-center text-sm shadow-xs ${info.color}`}>
-                    {info.symbol}
+              return (
+                <div
+                  key={key}
+                  className="bg-white rounded-3xl p-5 border border-stone-200/80 shadow-xs hover:shadow-md transition-all flex flex-col justify-between space-y-4"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className={`w-12 h-12 rounded-2xl font-mono font-black flex items-center justify-center text-base shadow-sm ${info.color}`}>
+                        {info.symbol}
+                      </div>
+                      <div>
+                        <h4 className="font-extrabold text-stone-900 text-sm leading-tight">{info.label}</h4>
+                        <p className="text-[11px] text-stone-500 font-medium">{info.desc}</p>
+                      </div>
+                    </div>
+
+                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2.5 py-1 rounded-full shrink-0">
+                      Traceable ✓
+                    </span>
                   </div>
-                  <div>
-                    <h4 className="font-bold text-stone-900 text-sm flex items-center space-x-1.5">
-                      <span>{info.label}</span>
-                    </h4>
-                    <p className="text-[11px] text-stone-500 font-medium">{info.desc}</p>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-xs text-stone-400 font-semibold uppercase tracking-wider">Estimated Recovery</span>
+                      <span className="text-xl font-black text-stone-900">{kgVal}</span>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="w-full bg-stone-100 rounded-full h-2 overflow-hidden">
+                      <div className="bg-[#16A34A] h-2 rounded-full transition-all duration-500" style={{ width: `${Math.max(8, progressPct)}%` }} />
+                    </div>
                   </div>
                 </div>
-
-                <div className="text-right">
-                  <div className="text-base font-black text-stone-900">{kgVal}</div>
-                  <span className="text-[10px] text-emerald-600 font-bold">Traceable ✓</span>
-                </div>
-              </div>
-            );
-          })
+              );
+            })}
+          </div>
         ) : (
-          <div className="p-6 text-center text-xs text-stone-500">Loading mineral estimates...</div>
+          <div className="bg-white rounded-3xl p-12 text-center text-xs text-stone-500 font-semibold border border-stone-200">
+            Loading mineral recovery estimates...
+          </div>
         )}
       </div>
 
-      {/* Ministry Policy Note */}
-      <div className="bg-amber-50 rounded-card p-3.5 border border-amber-200 text-xs text-amber-900 space-y-1">
-        <div className="flex items-center space-x-1.5 font-bold">
-          <Shield size={16} className="text-amber-700" />
-          <span>National Critical Minerals Alignment</span>
+      {/* JNARDDC Mandate Policy Note */}
+      <div className="bg-amber-50/80 rounded-3xl p-5 border border-amber-200/80 text-xs text-amber-900 space-y-2 shadow-xs">
+        <div className="flex items-center space-x-2 font-black text-sm">
+          <Shield size={18} className="text-amber-700" />
+          <span>National Strategic Mineral Security & Secondary Resource Circularity</span>
         </div>
-        <p className="text-[11px] leading-relaxed text-amber-800">
-          This dashboard translates informal e-waste collections into strategic raw mineral recoveries, directly supporting JNARDDC's domestic resource circularity goals.
+        <p className="text-xs leading-relaxed text-amber-800 font-medium">
+          This JNARDDC-compliant portal converts verified e-waste handover transactions into real-time critical mineral recovery estimates (Lithium, Cobalt, Neodymium, Tantalum), ensuring 100% material traceability from informal scrap collectors to licensed recycling refineries.
         </p>
       </div>
     </div>
   );
 };
+

@@ -68,7 +68,14 @@ export const HomePage: React.FC = () => {
 
   useEffect(() => {
     const raw = localStorage.getItem('kabadiwala_user');
-    try { setUser(raw ? JSON.parse(raw) : null); } catch { /* */ }
+    try {
+      const u = raw ? JSON.parse(raw) : null;
+      setUser(u);
+      if (u?.role === 'recycler') {
+        navigate('/recycler', { replace: true });
+        return;
+      }
+    } catch { /* */ }
 
     // Fetch live recyclers
     async function loadRecyclers() {

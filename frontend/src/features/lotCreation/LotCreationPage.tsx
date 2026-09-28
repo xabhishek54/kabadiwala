@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { db } from '../../data/local/db';
 import { classifyImageClient } from '../../utils/mlClassifier';
 import {
-  Camera, Plus, Trash2, ArrowLeft, Sparkles, RefreshCw,
+  Plus, Trash2, ArrowLeft, Sparkles, RefreshCw,
   ChevronDown, ImagePlus, CheckCircle2, AlertCircle, Package
 } from 'lucide-react';
 
@@ -297,8 +297,7 @@ export const LotCreationPage: React.FC = () => {
     setExpandedId(manual.id);
   };
 
-  /* ─── Save Lot ─── */
-  const handleSaveLot = async () => {
+  const handleSaveLot = async (shouldMatchRecycler: boolean = true) => {
     if (items.length === 0) return;
     setIsSaving(true);
 
@@ -308,6 +307,22 @@ export const LotCreationPage: React.FC = () => {
     const userObj = userStr ? JSON.parse(userStr) : null;
     const collectorId = userObj?.id ?? 'col-demo-101';
 
+    // Best-effort GPS capture at collection time (non-blocking)
+    let collectionLat: number | undefined;
+    let collectionLng: number | undefined;
+    let collectionAddress: string | undefined;
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 4000, maximumAge: 60000 })
+      );
+      collectionLat = pos.coords.latitude;
+      collectionLng = pos.coords.longitude;
+      const { reverseGeocode } = await import('../../utils/geoUtils');
+      collectionAddress = await reverseGeocode(collectionLat, collectionLng);
+    } catch {
+      // GPS unavailable or denied — continue without it
+    }
+
     // Dominant category = the one with highest total estimated value
     const categoryTotals: Record<string, number> = {};
     for (const item of items) {
@@ -315,32 +330,39 @@ export const LotCreationPage: React.FC = () => {
     }
     const dominantCategory = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'PCB';
 
+    // Build a human-readable description from all line items
+    const description = items.map(i => `${i.subCategoryId} (${i.weightKg}kg, ${i.condition})`).join('; ');
+
     try {
       await db.materials.add({
         lot_id: clientUuid,
         material_category: dominantCategory as any,
         sub_category: items.map(i => i.subCategoryId).join(', '),
+        description,
         approx_weight_kg: totalWeight,
         condition: items[0].condition,
         source_type: sourceType,
         estimated_value: totalValue,
         collector_id: collectorId,
-        photo_local_uri: photos[0] ?? undefined,
+        collection_lat: collectionLat,
+        collection_lng: collectionLng,
+        collection_address: collectionAddress,
+        image_ref: photos[0] ?? undefined,
         created_at: nowIso,
-        synced: false,
       } as any);
 
       await db.transactions.add({
         lot_id: clientUuid,
         collector_id: collectorId,
-        material_category: dominantCategory as any,
         quoted_price: totalValue,
-        status: 'created',
+        status: 'draft',
         payment_method: 'pending',
         payment_status: 'unpaid',
+        collection_lat: collectionLat,
+        collection_lng: collectionLng,
+        collection_address: collectionAddress,
         created_at: nowIso,
         updated_at: nowIso,
-        synced: false,
       } as any);
 
       await db.syncOutbox.add({
@@ -351,11 +373,14 @@ export const LotCreationPage: React.FC = () => {
           lot_id: clientUuid,
           material_category: dominantCategory,
           sub_category: items.map(i => i.subCategoryId).join(', '),
+          description,
           approx_weight_kg: totalWeight,
           condition: items[0].condition,
           source_type: sourceType,
           estimated_value: totalValue,
           collector_id: collectorId,
+          collection_lat: collectionLat,
+          collection_lng: collectionLng,
           line_items: items.map(i => ({
             sub_category: i.subCategoryId,
             category: i.categoryId,
@@ -371,7 +396,11 @@ export const LotCreationPage: React.FC = () => {
       console.warn('Local Dexie save error:', err);
     } finally {
       setIsSaving(false);
-      navigate(`/match/${clientUuid}`);
+      if (shouldMatchRecycler) {
+        navigate(`/match/${clientUuid}`);
+      } else {
+        navigate('/lots');
+      }
     }
   };
 
@@ -556,7 +585,7 @@ export const LotCreationPage: React.FC = () => {
 
           {/* Items Accordion List */}
           <div className="space-y-2 overflow-y-auto max-h-[58vh] pr-0.5">
-            {items.map((item, idx) => {
+            {items.map((item) => {
               const grp = CATEGORY_GROUPS.find(g => g.id === item.categoryId) ?? CATEGORY_GROUPS[0];
               const sub = grp.subCategories.find(s => s.id === item.subCategoryId) ?? grp.subCategories[0];
               const itemValue = calcItemValue(item);
@@ -831,30 +860,38 @@ export const LotCreationPage: React.FC = () => {
             </p>
           </div>
 
-          {/* Save CTA */}
-          <div className="flex gap-2 mt-auto">
+          {/* Save CTA Options */}
+          <div className="flex flex-col sm:flex-row gap-2.5 mt-auto pt-2">
             <button
               type="button"
               onClick={() => setStep(2)}
-              className="py-3.5 px-5 rounded-2xl border border-stone-300 text-stone-700 font-extrabold text-xs"
+              className="py-3.5 px-4 rounded-2xl border border-stone-300 text-stone-700 font-extrabold text-xs cursor-pointer hover:bg-stone-50"
             >
               Back
             </button>
             <button
               type="button"
-              onClick={handleSaveLot}
+              onClick={() => handleSaveLot(false)}
               disabled={isSaving || items.length === 0}
-              className="flex-1 bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold py-4 rounded-2xl shadow-lg text-sm transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+              className="flex-1 bg-stone-900 hover:bg-stone-800 text-white font-extrabold py-3.5 px-4 rounded-2xl shadow-sm text-xs transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <CheckCircle2 size={16} />
+              <span>Save Lot Only</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSaveLot(true)}
+              disabled={isSaving || items.length === 0}
+              className="flex-1 bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold py-3.5 px-4 rounded-2xl shadow-md text-xs transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
             >
               {isSaving ? (
                 <>
-                  <RefreshCw size={18} className="animate-spin" />
+                  <RefreshCw size={16} className="animate-spin" />
                   <span>Saving Lot…</span>
                 </>
               ) : (
                 <>
-                  <CheckCircle2 size={18} />
-                  <span>Save Lot & Match Recyclers →</span>
+                  <span>Save & Match Recyclers →</span>
                 </>
               )}
             </button>

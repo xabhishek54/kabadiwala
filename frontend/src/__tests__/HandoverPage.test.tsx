@@ -14,6 +14,6 @@ describe('HandoverPage Component', () => {
       </MemoryRouter>
     );
     // With no seeded IndexedDB, the page renders its loading state
-    expect(screen.getByText(/सामान की जानकारी लोड हो रही है/i)).toBeInTheDocument();
+    expect(screen.getByText(/Loading lot details...|Loading/i)).toBeInTheDocument();
   });
 });

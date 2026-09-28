@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
 import {
   Factory, Package, Search, Filter, IndianRupee,
-  Award, ShieldCheck, RefreshCw, Layers, ShieldAlert
+  Award, ShieldCheck, RefreshCw, Layers, ShieldAlert, Tag,
+  MapPin, Calendar, Phone, Check, X, QrCode, Lock
 } from 'lucide-react';
 import { db } from '../../data/local/db';
 import { API_BASE_URL } from '../../data/remote/apiClient';
+import { NotificationBell } from '../../components/NotificationBell';
 
 interface AdminLot {
   lot_id: string;
@@ -17,11 +18,17 @@ interface AdminLot {
   estimated_value: number;
   image_ref?: string;
   collector_id: string;
+  collector_phone?: string;
   status: string;
   final_sale_value?: number;
   payment_status: string;
   created_at?: string;
   recycler_id?: string;
+  collection_address?: string;
+  pickup_scheduled_date?: string;
+  pickup_exact_time?: string;
+  pickup_window?: string;
+  pickup_confirmed_by_recycler?: boolean;
 }
 
 interface DashboardStats {
@@ -33,10 +40,9 @@ interface DashboardStats {
 }
 
 export const RecyclerDashboardPage: React.FC = () => {
-  const { t } = useTranslation();
   const navigate = useNavigate();
 
-  const userJson = typeof window !== 'undefined' ? localStorage.getItem('kabadiwala_user') : null;
+  const userJson = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined' ? localStorage.getItem('kabadiwala_user') : null;
   const currentUser = userJson ? JSON.parse(userJson) : null;
   const recyclerId = currentUser?.recycler_id || currentUser?.id || 'rec-pune-001';
 
@@ -46,6 +52,8 @@ export const RecyclerDashboardPage: React.FC = () => {
   const [categoryFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
+  const [selectedDetailLot, setSelectedDetailLot] = useState<AdminLot | null>(null);
+  const [isConfirmingPickup, setIsConfirmingPickup] = useState<boolean>(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -68,11 +76,17 @@ export const RecyclerDashboardPage: React.FC = () => {
           condition: mat?.condition || 'intact',
           estimated_value: tx.final_sale_value || tx.quoted_price || mat?.estimated_value || 0,
           collector_id: tx.collector_id,
+          collector_phone: '9876543210',
           status: tx.status,
           final_sale_value: tx.final_sale_value,
           payment_status: tx.payment_status || 'unpaid',
           created_at: tx.created_at,
           recycler_id: tx.recycler_id || recyclerId,
+          collection_address: mat?.collection_address || tx.collection_address || 'Wakad, Pune',
+          pickup_scheduled_date: tx.pickup_scheduled_date || new Date().toISOString().split('T')[0],
+          pickup_exact_time: tx.pickup_exact_time || '14:30',
+          pickup_window: tx.pickup_window || 'afternoon',
+          pickup_confirmed_by_recycler: tx.pickup_confirmed_by_recycler || false,
         };
       });
 
@@ -161,117 +175,200 @@ export const RecyclerDashboardPage: React.FC = () => {
     return matchesStatus && matchesCategory && matchesSearch;
   });
 
+  const [showCounterEdit, setShowCounterEdit] = useState<boolean>(false);
+  const [counterDate, setCounterDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [counterTime, setCounterTime] = useState<string>('10:00');
+  const [counterWindow, setCounterWindow] = useState<'morning' | 'afternoon' | 'evening'>('morning');
+
+  const handleConfirmPickupByRecycler = async (lot: AdminLot) => {
+    setIsConfirmingPickup(true);
+    const nowIso = new Date().toISOString();
+
+    // 1. Update local transaction
+    await db.transactions.update(lot.lot_id, {
+      pickup_confirmed_by_recycler: true,
+      pickup_confirmed_at: nowIso,
+      updated_at: nowIso,
+    } as any);
+
+    // 2. Notify the collector
+    await db.notifications.add({
+      recipient_id: lot.collector_id,
+      title: `✅ Pickup Confirmed by Recycler`,
+      message: `${currentUser?.name || 'Recycler Facility'} confirmed pickup for Lot ${lot.lot_id.slice(0, 8)} on ${lot.pickup_scheduled_date || 'Today'} @ ${lot.pickup_exact_time || '14:30'}`,
+      type: 'pickup_confirmed',
+      lot_id: lot.lot_id,
+      read: false,
+      created_at: nowIso,
+    });
+
+    setIsConfirmingPickup(false);
+    setSelectedDetailLot(prev => prev ? { ...prev, pickup_confirmed_by_recycler: true } : null);
+    fetchData();
+  };
+
+  const handleProposeCounterSchedule = async (lot: AdminLot) => {
+    setIsConfirmingPickup(true);
+    const nowIso = new Date().toISOString();
+
+    await db.transactions.update(lot.lot_id, {
+      pickup_scheduled_date: counterDate,
+      pickup_exact_time: counterTime,
+      pickup_window: counterWindow,
+      pickup_confirmed_by_recycler: false,
+      updated_at: nowIso,
+    } as any);
+
+    await db.notifications.add({
+      recipient_id: lot.collector_id,
+      title: `📩 Recycler Proposed New Pickup Schedule`,
+      message: `${currentUser?.name || 'Recycler Facility'} proposed new pickup time: ${counterDate} @ ${counterTime} (${counterWindow}) for Lot ${lot.lot_id.slice(0, 8)}`,
+      type: 'schedule_updated',
+      lot_id: lot.lot_id,
+      read: false,
+      created_at: nowIso,
+    });
+
+    setIsConfirmingPickup(false);
+    setShowCounterEdit(false);
+    setSelectedDetailLot(prev => prev ? {
+      ...prev,
+      pickup_scheduled_date: counterDate,
+      pickup_exact_time: counterTime,
+      pickup_window: counterWindow,
+      pickup_confirmed_by_recycler: false,
+    } : null);
+    fetchData();
+  };
+
   return (
-    <div className="pb-24 pt-4 px-4 max-w-4xl mx-auto space-y-5 font-sans">
-      {/* Recycler Header */}
-      <div className="bg-stone-900 text-white rounded-2xl p-5 shadow-elevated border border-stone-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="flex items-center space-x-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-[#16A34A] text-white flex items-center justify-center shadow-md shrink-0">
-            <Factory size={26} />
+    <div className="pb-24 pt-4 px-4 sm:px-6 md:px-8 max-w-7xl mx-auto space-y-6 font-sans text-stone-900">
+      {/* Recycler Header — compact */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white rounded-3xl p-4 sm:p-5 border border-stone-200/80 shadow-xs">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 rounded-2xl bg-[#16A34A] text-white flex items-center justify-center shadow-xs shrink-0">
+            <Factory size={22} />
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <h2 className="text-xl font-bold tracking-tight">EcoRecycle India — Portal</h2>
-              <span className="bg-emerald-500/20 text-emerald-300 text-xs font-bold px-2.5 py-0.5 rounded-full border border-emerald-500/30 flex items-center space-x-1">
-                <ShieldCheck size={12} className="mr-0.5" /> MPCB Verified
+              <h1 className="text-base sm:text-lg font-black text-stone-900 tracking-tight">{currentUser?.name || 'EcoRecycle India — Portal'}</h1>
+              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center space-x-1">
+                <ShieldCheck size={12} /> MPCB Verified
               </span>
             </div>
-            <p className="text-xs text-stone-400 font-medium mt-0.5">Formal E-Waste Aggregator & Processing Hub (Pune District)</p>
+            <p className="text-xs text-stone-500 font-medium">Formal E-Waste Aggregator ({currentUser?.district || 'Pune District'})</p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center gap-2">
+          <NotificationBell />
+          <NavLink
+            to="/recycler/rates"
+            className="px-3.5 py-1.5 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer"
+          >
+            <Tag size={13} className="text-[#16A34A]" />
+            <span>Manage Rates</span>
+          </NavLink>
+
           <NavLink
             to="/admin/anomalies"
-            className="tap-target px-3.5 py-2 rounded-xl bg-rose-900/80 hover:bg-rose-800 text-rose-200 text-xs font-bold flex items-center space-x-1.5 border border-rose-700/50 transition-colors"
+            className="px-3.5 py-1.5 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer"
           >
-            <ShieldAlert size={14} className="text-rose-400 animate-pulse" />
-            <span>{t('recycler.anomalyAlerts')}</span>
+            <ShieldAlert size={13} className="text-rose-600 animate-pulse" />
+            <span>Alerts</span>
           </NavLink>
 
           <button
             onClick={fetchData}
-            className="tap-target px-3.5 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold flex items-center space-x-1.5 border border-stone-700 transition-colors"
+            className="p-2 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold transition-all cursor-pointer"
+            title="Refresh Queue"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            <span>Refresh Queue</span>
           </button>
         </div>
       </div>
 
-      {/* Metrics Banner */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-1">
-          <div className="flex items-center justify-between text-stone-500 text-xs font-semibold">
-            <span>Total Intake</span>
-            <Package size={16} className="text-[#16A34A]" />
+      {/* Metrics Banner — Responsive 4 Columns */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+        <div className="bg-white rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 border border-stone-200/80 shadow-xs hover:shadow-md transition-all space-y-1 sm:space-y-2 min-w-0">
+          <div className="flex items-center justify-between text-stone-500 text-[10px] sm:text-xs font-extrabold uppercase tracking-tight sm:tracking-wider">
+            <span className="truncate">Total Intake</span>
+            <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+              <Package size={15} />
+            </div>
           </div>
-          <p className="text-xl font-black text-stone-900">{stats ? `${stats.total_weight_kg} kg` : '0 kg'}</p>
-          <p className="text-[11px] text-emerald-600 font-medium">↑ 14% this month</p>
+          <p className="text-xl sm:text-3xl font-black text-stone-900 truncate">{stats ? `${stats.total_weight_kg} kg` : '0 kg'}</p>
+          <p className="text-[10px] sm:text-xs text-emerald-600 font-bold flex items-center gap-1 leading-tight truncate">↑ 14% monthly intake</p>
         </div>
 
-        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-1">
-          <div className="flex items-center justify-between text-stone-500 text-xs font-semibold">
-            <span>Disbursed Payouts</span>
-            <IndianRupee size={16} className="text-emerald-600" />
+        <div className="bg-white rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 border border-stone-200/80 shadow-xs hover:shadow-md transition-all space-y-1 sm:space-y-2 min-w-0">
+          <div className="flex items-center justify-between text-stone-500 text-[10px] sm:text-xs font-extrabold uppercase tracking-tight sm:tracking-wider">
+            <span className="truncate">Payouts</span>
+            <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+              <IndianRupee size={15} />
+            </div>
           </div>
-          <p className="text-xl font-black text-stone-900">₹{stats ? stats.total_payouts_inr.toLocaleString('en-IN') : '0'}</p>
-          <p className="text-[11px] text-stone-500 font-medium">Direct cash & UPI</p>
+          <p className="text-xl sm:text-3xl font-black text-stone-900 truncate">₹{stats ? stats.total_payouts_inr.toLocaleString('en-IN') : '0'}</p>
+          <p className="text-[10px] sm:text-xs text-stone-500 font-medium leading-tight truncate">Direct settlements</p>
         </div>
 
-        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-1">
-          <div className="flex items-center justify-between text-stone-500 text-xs font-semibold">
-            <span>Active Lots</span>
-            <Layers size={16} className="text-amber-600" />
+        <div className="bg-white rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 border border-stone-200/80 shadow-xs hover:shadow-md transition-all space-y-1 sm:space-y-2 min-w-0">
+          <div className="flex items-center justify-between text-stone-500 text-[10px] sm:text-xs font-extrabold uppercase tracking-tight sm:tracking-wider">
+            <span className="truncate">Active Lots</span>
+            <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+              <Layers size={15} />
+            </div>
           </div>
-          <p className="text-xl font-black text-stone-900">{stats ? stats.total_lots : 0}</p>
-          <p className="text-[11px] text-amber-600 font-medium">Pending verification</p>
+          <p className="text-xl sm:text-3xl font-black text-stone-900">{stats ? stats.total_lots : 0}</p>
+          <p className="text-[10px] sm:text-xs text-amber-700 font-bold leading-tight truncate">Pending verification</p>
         </div>
 
-        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-1">
-          <div className="flex items-center justify-between text-stone-500 text-xs font-semibold">
-            <span>Authorized Recyclers</span>
-            <Award size={16} className="text-purple-600" />
+        <div className="bg-white rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 border border-stone-200/80 shadow-xs hover:shadow-md transition-all space-y-1 sm:space-y-2 min-w-0">
+          <div className="flex items-center justify-between text-stone-500 text-[10px] sm:text-xs font-extrabold uppercase tracking-tight sm:tracking-wider">
+            <span className="truncate">Recyclers</span>
+            <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+              <Award size={15} />
+            </div>
           </div>
-          <p className="text-xl font-black text-stone-900">{stats ? stats.verified_recyclers_count : 1}</p>
-          <p className="text-[11px] text-purple-600 font-medium">Licensed facility</p>
+          <p className="text-xl sm:text-3xl font-black text-stone-900">{stats ? stats.verified_recyclers_count : 1}</p>
+          <p className="text-xs text-purple-700 font-bold">MPCB License #BO/MPCB/RO-PUNE/2024</p>
         </div>
       </div>
 
       {/* Lot Queue Filters & Search */}
-      <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <h3 className="font-bold text-stone-900 text-base flex items-center space-x-2">
-            <Package size={18} className="text-[#16A34A]" />
+      <div className="bg-white rounded-3xl p-5 border border-stone-200/80 shadow-xs space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <h3 className="font-black text-stone-900 text-lg flex items-center space-x-2.5">
+            <Package size={22} className="text-[#16A34A]" />
             <span>Incoming E-Waste Queue</span>
-            <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-0.5 rounded-full">
-              {filteredLots.length}
+            <span className="bg-emerald-100 text-emerald-800 text-xs font-extrabold px-2.5 py-0.5 rounded-full">
+              {filteredLots.length} Lots
             </span>
           </h3>
 
-          <div className="relative flex-1 max-w-xs">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+          <div className="relative flex-1 max-w-md">
+            <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
             <input
               type="text"
-              placeholder="Search lot ID or material..."
+              placeholder="Search lot ID or material title..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-stone-200 bg-stone-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20"
+              className="w-full pl-10 pr-4 py-2.5 text-xs font-semibold rounded-2xl border border-stone-200 bg-stone-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] shadow-xs"
             />
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 text-xs font-medium">
-          <span className="text-stone-500 flex items-center mr-1">
-            <Filter size={14} className="mr-1" /> Status:
+        <div className="flex flex-wrap items-center gap-2 text-xs font-bold border-t border-stone-100 pt-3">
+          <span className="text-stone-400 flex items-center mr-1">
+            <Filter size={14} className="mr-1" /> Filter Status:
           </span>
           {['all', 'matched', 'handed_over', 'confirmed', 'paid'].map(st => (
             <button
               key={st}
               onClick={() => setStatusFilter(st)}
-              className={`px-2.5 py-1 rounded-lg capitalize transition-colors ${
+              className={`px-3 py-1.5 rounded-full capitalize transition-all cursor-pointer ${
                 statusFilter === st
-                  ? 'bg-[#16A34A] text-white font-semibold shadow-xs'
+                  ? 'bg-[#16A34A] text-white shadow-xs font-extrabold'
                   : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
               }`}
             >
@@ -281,69 +378,285 @@ export const RecyclerDashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Lot Queue Table / Cards */}
+      {/* Lot Queue Table / Cards Grid */}
       <div className="space-y-3">
         {filteredLots.length === 0 ? (
-          <div className="bg-white rounded-2xl p-8 text-center border border-stone-200 space-y-2">
-            <Package size={36} className="mx-auto text-stone-300" />
-            <p className="text-sm font-semibold text-stone-600">No lots found matching criteria</p>
+          <div className="bg-white rounded-3xl p-12 text-center border border-stone-200 space-y-3">
+            <Package size={44} className="mx-auto text-stone-300" />
+            <p className="text-base font-bold text-stone-700">No lots found matching criteria</p>
+            <p className="text-xs text-stone-500">Incoming scrap lots assigned to your facility will appear here.</p>
           </div>
         ) : (
-          filteredLots.map(lot => (
-            <div
-              key={lot.lot_id}
-              className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-3 hover:border-emerald-300 transition-colors"
-            >
-              <div className="flex items-center space-x-3.5">
-                <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center justify-center font-bold text-xs shrink-0">
-                  {(lot.category ?? 'N/A').slice(0, 3)}
-                </div>
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="font-mono text-xs font-bold text-stone-900">{lot.lot_id}</span>
-                    <span className="bg-stone-100 text-stone-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-stone-200">
-                      {lot.category ?? 'N/A'}
-                    </span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${
-                      lot.status === 'confirmed' || lot.status === 'paid'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : lot.status === 'handed_over'
-                        ? 'bg-amber-100 text-amber-800'
-                        : 'bg-blue-100 text-blue-800'
-                    }`}>
-                      {lot.status.replace('_', ' ')}
-                    </span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start">
+            {filteredLots.map(lot => (
+              <div
+                key={lot.lot_id}
+                onClick={() => setSelectedDetailLot(lot)}
+                className="bg-white rounded-2xl p-3 border border-stone-200/80 shadow-xs hover:border-[#16A34A] hover:shadow-md transition-all cursor-pointer space-y-2 h-fit"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center space-x-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-amber-50 border border-amber-200/60 text-amber-900 flex items-center justify-center font-black text-[11px] shrink-0">
+                      {(lot.category ?? 'N/A').slice(0, 3)}
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="font-extrabold text-stone-900 text-xs truncate leading-tight">{lot.sub_category}</h4>
+                      <div className="text-[10px] text-stone-400 font-mono truncate">{lot.lot_id.slice(0, 8)}</div>
+                    </div>
                   </div>
-                  <p className="text-xs text-stone-600 font-medium mt-0.5">
-                    {lot.sub_category} • {lot.weight_kg} kg • Condition: <span className="capitalize">{lot.condition}</span>
-                  </p>
-                </div>
-              </div>
 
-              <div className="flex items-center space-x-4 self-end md:self-center">
-                <div className="text-right">
-                  <p className="text-sm font-bold text-stone-900">
-                    ₹{(lot.final_sale_value || lot.estimated_value).toLocaleString('en-IN')}
-                  </p>
-                  <p className="text-[10px] text-stone-500 font-medium">
-                    {lot.payment_status === 'paid' ? 'Paid ✓' : 'Awaiting Settlement'}
-                  </p>
+                  <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full capitalize shrink-0 ${
+                    lot.status === 'confirmed' || lot.status === 'paid'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : lot.status === 'handed_over'
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-blue-100 text-blue-800'
+                  }`}>
+                    {lot.status.replace('_', ' ')}
+                  </span>
                 </div>
 
-                {lot.status !== 'confirmed' && lot.status !== 'paid' && lot.status !== 'closed' && (
-                  <button
-                    onClick={() => navigate(`/handover/${lot.lot_id}`)}
-                    className="tap-target px-3 py-1.5 text-xs font-bold bg-[#16A34A] hover:bg-emerald-700 text-white rounded-xl shadow-xs transition-colors flex items-center space-x-1"
-                  >
-                    <span>🔐</span>
-                    <span>Digital Handover</span>
-                  </button>
-                )}
+                <div className="bg-stone-50 rounded-xl p-2 border border-stone-200/60 flex items-center justify-between text-xs font-semibold">
+                  <div className="text-[11px]">
+                    <span className="text-stone-400 text-[10px]">Weight:</span> <strong className="text-stone-900 font-black">{lot.weight_kg} kg</strong>
+                  </div>
+                  <div className="text-[11px] text-right">
+                    <span className="text-stone-400 text-[10px]">Payout:</span> <strong className="text-[#16A34A] font-black text-xs">₹{(lot.final_sale_value || lot.estimated_value).toLocaleString('en-IN')}</strong>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1 text-[10px] text-stone-500 font-medium">
+                  <span className="truncate flex items-center gap-1">
+                    <MapPin size={11} className="text-stone-400 shrink-0" />
+                    <span className="truncate">{lot.collection_address || 'Wakad, Pune'}</span>
+                  </span>
+                  <span className="text-emerald-700 font-bold shrink-0">Tap details →</span>
+                </div>
               </div>
-            </div>
-          ))
+            ))}
+          </div>
         )}
       </div>
+
+      {/* Minimalist Detailed Lot Modal Drawer */}
+      {selectedDetailLot && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200 font-sans text-stone-900">
+          <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl border border-stone-200 shadow-2xl p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-center font-black text-xs">
+                  {(selectedDetailLot.category ?? 'N/A').slice(0, 3)}
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-stone-900 text-sm sm:text-base leading-tight">{selectedDetailLot.sub_category}</h3>
+                  <div className="flex items-center gap-2 text-[10px] text-stone-500 font-mono">
+                    <span>Lot ID: {selectedDetailLot.lot_id}</span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedDetailLot(null)}
+                className="p-1.5 rounded-full hover:bg-stone-100 text-stone-400 hover:text-stone-600 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Quick Financial Summary Banner */}
+            <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl p-3.5 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Scrap Weight</span>
+                <div className="text-base font-black text-stone-900">{selectedDetailLot.weight_kg} kg ({selectedDetailLot.condition})</div>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Total Payout</span>
+                <div className="text-lg font-black text-[#16A34A]">₹{(selectedDetailLot.final_sale_value || selectedDetailLot.estimated_value).toLocaleString('en-IN')}</div>
+              </div>
+            </div>
+
+            {/* Agreed Pickup Schedule */}
+            <div className="bg-stone-50 border border-stone-200/80 rounded-2xl p-3 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-extrabold text-stone-800 flex items-center gap-1.5">
+                  <Calendar size={14} className="text-[#16A34A]" />
+                  Scheduled Pickup Time
+                </span>
+                <div className="flex items-center gap-1">
+                  {selectedDetailLot.pickup_confirmed_by_recycler ? (
+                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full flex items-center gap-0.5">
+                      <Check size={12} /> Accepted & Confirmed
+                    </span>
+                  ) : (
+                    <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
+                      Awaiting Recycler Confirmation
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowCounterEdit(!showCounterEdit)}
+                    className="text-[10px] font-bold text-emerald-700 hover:text-emerald-900 bg-white border border-stone-200 px-2 py-0.5 rounded-full"
+                  >
+                    {showCounterEdit ? 'Close' : '✏️ Propose New Time'}
+                  </button>
+                </div>
+              </div>
+
+              {showCounterEdit ? (
+                <div className="space-y-2 pt-2 border-t border-stone-200/80 animate-in fade-in duration-150">
+                  <span className="text-[11px] font-extrabold text-stone-800 block">Propose Alternative Date & Time:</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-[9px] font-bold text-stone-400 block uppercase">New Date</span>
+                      <input
+                        type="date"
+                        value={counterDate}
+                        onChange={(e) => setCounterDate(e.target.value)}
+                        className="w-full p-2 bg-white border border-stone-200 rounded-xl text-xs font-bold text-stone-900"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[9px] font-bold text-stone-400 block uppercase">New Time</span>
+                      <input
+                        type="time"
+                        value={counterTime}
+                        onChange={(e) => setCounterTime(e.target.value)}
+                        className="w-full p-2 bg-white border border-stone-200 rounded-xl text-xs font-bold text-stone-900"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5 pt-1">
+                    {(['morning', 'afternoon', 'evening'] as const).map(w => (
+                      <button
+                        key={w}
+                        type="button"
+                        onClick={() => setCounterWindow(w)}
+                        className={`py-1.5 px-1 rounded-xl text-[10px] font-bold capitalize border transition-all ${
+                          counterWindow === w
+                            ? 'border-[#16A34A] bg-emerald-50 text-[#16A34A]'
+                            : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'
+                        }`}
+                      >
+                        {w}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isConfirmingPickup}
+                    onClick={() => handleProposeCounterSchedule(selectedDetailLot)}
+                    className="w-full py-2 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Check size={14} />
+                    <span>Send Counter Proposal to Collector</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-stone-200/60 text-stone-700">
+                  <div>
+                    <span className="text-[10px] text-stone-400 block font-semibold">AGREED DATE</span>
+                    <strong className="text-stone-900 font-bold">{selectedDetailLot.pickup_scheduled_date || 'Today'}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-stone-400 block font-semibold">EXACT TIME WINDOW</span>
+                    <strong className="text-stone-900 font-bold">{selectedDetailLot.pickup_exact_time || '14:30'} ({selectedDetailLot.pickup_window || 'Afternoon'})</strong>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Collection Location with Map Pin Preview */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs font-extrabold text-stone-800">
+                <span className="flex items-center gap-1.5">
+                  <MapPin size={14} className="text-[#16A34A]" />
+                  Collection Address
+                </span>
+                <span className="text-[11px] text-emerald-700 font-semibold">📍 Pin Verified</span>
+              </div>
+
+              <div className="bg-stone-50 border border-stone-200 rounded-2xl p-3 text-xs font-semibold text-stone-800">
+                {selectedDetailLot.collection_address || 'Wakad, Pune, Maharashtra'}
+              </div>
+
+              {/* Map Preview Image Tile */}
+              <div className="relative h-32 w-full bg-stone-100 border border-stone-200 rounded-2xl overflow-hidden">
+                <img
+                  src={`https://staticmap.openstreetmap.de/staticmap.php?center=18.5204,73.8567&zoom=14&size=400x160&maptype=mapnik`}
+                  alt="Location Map Preview"
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="w-7 h-7 rounded-full bg-[#16A34A] text-white flex items-center justify-center shadow-lg border-2 border-white">
+                    <MapPin size={15} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Collector Contact info */}
+            <div className="bg-stone-50 border border-stone-200/80 rounded-2xl p-3 flex items-center justify-between text-xs">
+              <div>
+                <span className="text-[10px] text-stone-400 font-bold uppercase block">Collector</span>
+                <strong className="text-stone-900 font-bold">{selectedDetailLot.collector_id}</strong>
+              </div>
+
+              <a
+                href={`tel:${selectedDetailLot.collector_phone || '9876543210'}`}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold flex items-center gap-1 transition-colors"
+              >
+                <Phone size={13} />
+                <span>Call Collector</span>
+              </a>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="pt-2 space-y-2">
+              {!selectedDetailLot.pickup_confirmed_by_recycler ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={isConfirmingPickup}
+                    onClick={() => handleConfirmPickupByRecycler(selectedDetailLot)}
+                    className="w-full py-3 px-4 rounded-xl bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold text-xs shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    {isConfirmingPickup ? (
+                      <span>Confirming...</span>
+                    ) : (
+                      <>
+                        <Check size={16} />
+                        <span>Accept & Confirm Pickup Time</span>
+                      </>
+                    )}
+                  </button>
+
+                  <div className="p-2.5 bg-stone-100 border border-stone-200 rounded-xl text-[11px] text-stone-500 text-center font-bold flex items-center justify-center gap-1.5">
+                    <Lock size={13} className="text-stone-400" />
+                    <span>Confirm pickup time above to unlock digital handover</span>
+                  </div>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedDetailLot(null);
+                    navigate(`/handover/${selectedDetailLot.lot_id}`);
+                  }}
+                  className="w-full py-3 px-4 rounded-xl border border-stone-200 bg-stone-900 hover:bg-stone-800 text-white font-extrabold text-xs shadow-md flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <QrCode size={16} />
+                  <span>Open Digital Handover QR ✓</span>
+                </button>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 };

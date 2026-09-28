@@ -7,6 +7,7 @@ import { LotCreationPage } from './features/lotCreation/LotCreationPage';
 import { RecyclerMatchPage } from './features/recyclerMatch/RecyclerMatchPage';
 import { HandoverPage } from './features/handover/HandoverPage';
 import { LedgerPage } from './features/ledger/LedgerPage';
+import { LotsPage } from './features/lots/LotsPage';
 import { SafetyPage } from './features/safety/SafetyPage';
 import { RecyclerDashboardPage } from './features/recyclerMode/RecyclerDashboardPage';
 import { MineralsImpactPage } from './features/minerals/MineralsImpactPage';
@@ -66,7 +67,7 @@ const AppLayout: React.FC = () => {
 
           {/* Collector routes */}
           <Route path="/prices" element={<PriceBoardPage />} />
-          <Route path="/lots" element={<LedgerPage />} />
+          <Route path="/lots" element={<LotsPage />} />
           <Route path="/create-lot" element={<LotCreationPage />} />
           <Route path="/match/:lotId" element={<RecyclerMatchPage />} />
           <Route path="/handover/:lotId" element={<HandoverPage />} />

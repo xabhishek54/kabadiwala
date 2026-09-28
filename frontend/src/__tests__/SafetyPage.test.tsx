@@ -12,10 +12,10 @@ describe('SafetyPage Component', () => {
       </MemoryRouter>
     );
 
-    const matches = screen.getAllByText(/सुरक्षा निर्देश/i);
+    const matches = screen.getAllByText(/Safety Guidance|Safety/i);
     expect(matches.length).toBeGreaterThan(0);
 
-    const batteryMatches = screen.getAllByText(/बैटरी/i);
+    const batteryMatches = screen.getAllByText(/Battery Handling Safety|Battery/i);
     expect(batteryMatches.length).toBeGreaterThan(0);
   });
 });

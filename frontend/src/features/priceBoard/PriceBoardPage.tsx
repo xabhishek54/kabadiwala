@@ -1,327 +1,685 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { seedLocalPriceCache } from '../../data/local/db';
-import { fetchPrices } from '../../data/remote/apiClient';
+import { seedLocalPriceCache, db, type LocalMaterial, type LocalTransaction } from '../../data/local/db';
+import { fetchPrices, fetchRegisteredRecyclers, matchLotWithRecycler } from '../../data/remote/apiClient';
 import { AudioButton } from '../../components/AudioButton';
-import { MapPin, Search, ArrowLeft, TrendingUp, TrendingDown, Clock, ShieldCheck } from 'lucide-react';
+import {
+  MapPin, Search, ArrowLeft, Clock, Factory, ChevronRight, ChevronDown, ChevronUp,
+  ShieldCheck, Calendar, Phone, Building, X, Check
+} from 'lucide-react';
 
 const CATEGORY_TABS = [
   { id: 'All', label: 'All', icon: '🌐' },
-  { id: 'Metal', label: 'Metals', icon: '⚙️' },
-  { id: 'Cable', label: 'Cables', icon: '🔌' },
   { id: 'PCB', label: 'PCBs', icon: '🖥️' },
-  { id: 'Battery', label: 'Battery', icon: '🔋' },
+  { id: 'BATTERY', label: 'Batteries', icon: '🔋' },
+  { id: 'CABLE', label: 'Cables', icon: '🔌' },
+  { id: 'LCD_PANEL', label: 'LCD Displays', icon: '📺' },
+  { id: 'MOTOR_MAGNET', label: 'Motors', icon: '🧲' },
+  { id: 'MIXED_PLASTIC', label: 'Plastics', icon: '♻️' },
 ];
 
-interface PriceItemDisplay {
+export interface RecyclerOffer {
   id: string;
   name: string;
-  category: string;
-  range: string;
-  trend: string;
-  trendDirection: 'up' | 'down' | 'flat';
-  informalRate: string;
-  verifiedRate: string;
-  marketLow: number;
-  marketHigh: number;
-  lastUpdated: string;
-  pts: number[];
-  icon: string;
-  samples: number;
+  phone: string;
+  mpcbRef: string;
+  location: string;
+  distanceKm: number;
+  rate: number;
+  verified: boolean;
 }
+
+export interface MaterialPriceItem {
+  categoryCode: string;
+  name: string;
+  categoryGroup: string;
+  icon: string;
+  fixedRate: number; // Highest offered or benchmark fixed rate
+  informalRate: number; // ~15-20% lower street rate
+  pts: number[];
+  recyclers: RecyclerOffer[];
+  lastUpdated: string;
+}
+
+// Benchmark default fixed rates per category if no recycler rate is found
+const DEFAULT_BENCHMARK_RATES: Record<string, { name: string; categoryGroup: string; icon: string; rate: number; informal: number; pts: number[] }> = {
+  PCB: {
+    name: 'Circuit Board (PCB)',
+    categoryGroup: 'PCB',
+    icon: '🖥️',
+    rate: 260,
+    informal: 210,
+    pts: [240, 245, 250, 255, 260, 270, 280],
+  },
+  BATTERY: {
+    name: 'Battery / Lithium Cells',
+    categoryGroup: 'BATTERY',
+    icon: '🔋',
+    rate: 95,
+    informal: 75,
+    pts: [85, 88, 90, 92, 95, 94, 98],
+  },
+  CABLE: {
+    name: 'Copper & Aluminum Cable',
+    categoryGroup: 'CABLE',
+    icon: '🔌',
+    rate: 155,
+    informal: 130,
+    pts: [145, 148, 150, 152, 155, 158, 160],
+  },
+  LCD_PANEL: {
+    name: 'LCD & Display Screen',
+    categoryGroup: 'LCD_PANEL',
+    icon: '📺',
+    rate: 110,
+    informal: 85,
+    pts: [100, 102, 105, 108, 110, 112, 115],
+  },
+  CRT: {
+    name: 'Old TV / CRT Glass',
+    categoryGroup: 'CRT',
+    icon: '📺',
+    rate: 45,
+    informal: 30,
+    pts: [40, 42, 42, 45, 45, 46, 48],
+  },
+  MOTOR_MAGNET: {
+    name: 'Motor & Stator Assembly',
+    categoryGroup: 'MOTOR_MAGNET',
+    icon: '🧲',
+    rate: 78,
+    informal: 60,
+    pts: [70, 72, 75, 76, 78, 80, 82],
+  },
+  MIXED_PLASTIC: {
+    name: 'E-Waste Scrap Plastic Body',
+    categoryGroup: 'MIXED_PLASTIC',
+    icon: '♻️',
+    rate: 28,
+    informal: 20,
+    pts: [24, 25, 26, 27, 28, 28, 30],
+  },
+};
+
+// Fallback verified facilities list if DB is fresh
+const FALLBACK_RECYCLERS = [
+  {
+    id: 'rec-pune-001',
+    name: 'EcoRecycle India (Pune Hub)',
+    phone: '9876543210',
+    mpcbRef: 'MPCB/E-WASTE/2024/089',
+    location: 'Pune',
+    distanceKm: 3.2,
+    verified: true,
+    offered_rates: { PCB: 280, BATTERY: 95, CABLE: 160, LCD_PANEL: 120, CRT: 45, MOTOR_MAGNET: 80, MIXED_PLASTIC: 28 },
+  },
+  {
+    id: 'rec-mum-001',
+    name: 'GreenTech E-Waste Solutions',
+    phone: '9812345678',
+    mpcbRef: 'MPCB/E-WASTE/2024/112',
+    location: 'Mumbai',
+    distanceKm: 12.5,
+    verified: true,
+    offered_rates: { PCB: 285, BATTERY: 98, CABLE: 165, LCD_PANEL: 125, CRT: 42, MOTOR_MAGNET: 82, MIXED_PLASTIC: 30 },
+  },
+  {
+    id: 'rec-pune-002',
+    name: 'Chinchwad Aggregators & Metals',
+    phone: '9765432109',
+    mpcbRef: 'MPCB/E-WASTE/2024/054',
+    location: 'Pimpri-Chinchwad',
+    distanceKm: 6.8,
+    verified: true,
+    offered_rates: { PCB: 270, BATTERY: 102, CABLE: 158, LCD_PANEL: 115, CRT: 48, MOTOR_MAGNET: 85, MIXED_PLASTIC: 26 },
+  },
+];
 
 export const PriceBoardPage: React.FC = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedItemId, setSelectedItemId] = useState<string | null>('copper');
-  const [priceItems, setPriceItems] = useState<PriceItemDisplay[]>([]);
-  const [lastSyncTime, setLastSyncTime] = useState<string>('14 Sep, 09:20 AM');
+  const [expandedCategoryCode, setExpandedCategoryCode] = useState<string | null>(null);
+  const [priceItems, setPriceItems] = useState<MaterialPriceItem[]>([]);
+  const [lastSyncTime, setLastSyncTime] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
 
   const [district] = useState<string>(() => {
     try {
-      return (typeof window !== 'undefined' && window.localStorage && localStorage.getItem('kabadiwala_district')) || 'Pune, Maharashtra';
+      return (typeof window !== 'undefined' && window.localStorage && localStorage.getItem('kabadiwala_district')) || 'Pune';
     } catch {
-      return 'Pune, Maharashtra';
+      return 'Pune';
     }
   });
 
   useEffect(() => {
     seedLocalPriceCache();
 
-    async function loadBackendPrices() {
+    async function loadLiveData() {
       setLoading(true);
       try {
-        const data = await fetchPrices(district);
-        if (Array.isArray(data) && data.length > 0) {
-          const formatted: PriceItemDisplay[] = data.map((item: any) => {
-            const base = item.quoted_price || item.buying_price || 150;
-            const low = item.market_range_low || Math.round(base * 0.9);
-            const high = item.market_range_high || Math.round(base * 1.1);
-            const informal = Math.round(base * 0.85);
+        const remoteRecyclers = await fetchRegisteredRecyclers().catch(() => []);
+        const localRecyclers = await db.recyclers.toArray().catch(() => []);
 
-            return {
-              id: item.material_category?.toLowerCase() || item.sub_category?.toLowerCase() || 'item',
-              name: item.sub_category || item.material_category,
-              category: item.material_category === 'CABLE' ? 'Cable' : item.material_category === 'PCB' ? 'PCB' : item.material_category === 'BATTERY' ? 'Battery' : 'Metal',
-              range: `₹${low} – ₹${high}/kg`,
-              trend: '↑ Up 5.4%',
-              trendDirection: 'up',
-              informalRate: `₹${informal}–${base}/kg`,
-              verifiedRate: `₹${low}–${high}/kg`,
-              marketLow: low,
-              marketHigh: high,
-              lastUpdated: 'Today, ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              pts: [low, low + 10, low + 5, base, high - 10, base + 5, high],
-              icon: item.material_category === 'CABLE' ? '🔌' : item.material_category === 'PCB' ? '🖥️' : item.material_category === 'BATTERY' ? '🔋' : '⚙️',
-              samples: 18,
-            };
+        const combinedRecyclersRaw = [...remoteRecyclers, ...localRecyclers, ...FALLBACK_RECYCLERS];
+        const uniqueRecyclersMap = new Map<string, any>();
+        combinedRecyclersRaw.forEach(r => {
+          const rid = r.recycler_id || r.id || r.contact_phone;
+          if (rid && !uniqueRecyclersMap.has(rid)) {
+            uniqueRecyclersMap.set(rid, r);
+          }
+        });
+        const allRecyclers = Array.from(uniqueRecyclersMap.values());
+
+        const backendPrices = await fetchPrices(district).catch(() => []);
+
+        const categories = Object.keys(DEFAULT_BENCHMARK_RATES);
+
+        const items: MaterialPriceItem[] = categories.map((catCode) => {
+          const benchmark = DEFAULT_BENCHMARK_RATES[catCode];
+          const matchingRecyclers: RecyclerOffer[] = [];
+          let maxRate = benchmark.rate;
+
+          allRecyclers.forEach((r) => {
+            const rates = r.offered_rates || {};
+            const offeredRate = rates[catCode] || rates[catCode.toLowerCase()];
+
+            if (offeredRate && offeredRate > 0) {
+              if (offeredRate > maxRate) {
+                maxRate = offeredRate;
+              }
+              matchingRecyclers.push({
+                id: r.recycler_id || r.id || 'rec-001',
+                name: r.name || 'Registered E-Waste Facility',
+                phone: r.contact_phone || r.phone || '9876543210',
+                mpcbRef: r.authorization_ref_no || r.mpcbRef || 'MPCB Verified',
+                location: r.district || r.location || district,
+                distanceKm: r.distance_km || Math.round((Math.random() * 8 + 1) * 10) / 10,
+                rate: offeredRate,
+                verified: r.authorization_status === 'verified' || r.verified !== false,
+              });
+            }
           });
 
-          setPriceItems(formatted);
-          setLastSyncTime(new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + ', ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-        } else {
-          useDefaultSamplePrices();
-        }
+          matchingRecyclers.sort((a, b) => b.rate - a.rate);
+
+          const bPriceObj = backendPrices.find((p: any) =>
+            p.material_category === catCode || p.sub_category?.toLowerCase().includes(catCode.toLowerCase())
+          );
+          if (bPriceObj && bPriceObj.quoted_price && bPriceObj.quoted_price > maxRate) {
+            maxRate = bPriceObj.quoted_price;
+          }
+
+          const informalRate = Math.round(maxRate * 0.82);
+
+          return {
+            categoryCode: catCode,
+            name: benchmark.name,
+            categoryGroup: benchmark.categoryGroup,
+            icon: benchmark.icon,
+            fixedRate: maxRate,
+            informalRate: informalRate,
+            pts: benchmark.pts.map((_, idx) => Math.round(maxRate * (0.9 + idx * 0.02))),
+            recyclers: matchingRecyclers,
+            lastUpdated: 'Today, ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          };
+        });
+
+        setPriceItems(items);
+        setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
       } catch (err) {
-        console.warn('Backend price load error, using cached local price board:', err);
-        useDefaultSamplePrices();
+        console.warn('Error constructing real price board:', err);
       } finally {
         setLoading(false);
       }
     }
 
-    function useDefaultSamplePrices() {
-      setPriceItems([
-        {
-          id: 'copper',
-          name: 'Copper Heavy Cable Wire',
-          category: 'Cable',
-          range: '₹520 – ₹580/kg',
-          trend: '↑ Up 6.4%',
-          trendDirection: 'up',
-          informalRate: '₹480–520/kg',
-          verifiedRate: '₹520–580/kg',
-          marketLow: 520,
-          marketHigh: 580,
-          lastUpdated: 'Today, 09:20 AM',
-          pts: [520, 530, 525, 545, 560, 555, 580],
-          icon: '🔌',
-          samples: 24,
-        },
-        {
-          id: 'pcb',
-          name: 'Motherboard PCB High Grade',
-          category: 'PCB',
-          range: '₹240 – ₹280/kg',
-          trend: '↑ Up 3.2%',
-          trendDirection: 'up',
-          informalRate: '₹210–230/kg',
-          verifiedRate: '₹240–280/kg',
-          marketLow: 240,
-          marketHigh: 280,
-          lastUpdated: 'Today, 09:20 AM',
-          pts: [240, 245, 250, 255, 260, 270, 280],
-          icon: '🖥️',
-          samples: 16,
-        },
-        {
-          id: 'lithium',
-          name: 'Lithium-Ion Battery Pack',
-          category: 'Battery',
-          range: '₹850 – ₹1,050/kg',
-          trend: '↑ Up 5.8%',
-          trendDirection: 'up',
-          informalRate: '₹750–900/kg',
-          verifiedRate: '₹850–1,050/kg',
-          marketLow: 850,
-          marketHigh: 1050,
-          lastUpdated: 'Today, 09:20 AM',
-          pts: [850, 880, 920, 950, 990, 1020, 1050],
-          icon: '🔋',
-          samples: 31,
-        },
-        {
-          id: 'aluminium',
-          name: 'Aluminium Scrap Wire',
-          category: 'Metal',
-          range: '₹160 – ₹190/kg',
-          trend: '→ Flat 0.0%',
-          trendDirection: 'flat',
-          informalRate: '₹140–165/kg',
-          verifiedRate: '₹160–190/kg',
-          marketLow: 160,
-          marketHigh: 190,
-          lastUpdated: 'Today, 09:20 AM',
-          pts: [175, 175, 175, 175, 175, 175, 175],
-          icon: '⚙️',
-          samples: 12,
-        },
-      ]);
-    }
-
-    loadBackendPrices();
+    loadLiveData();
   }, [district]);
 
-  const filteredItems = priceItems.filter(m => {
-    const matchesTab = activeTab === 'All' || m.category === activeTab;
-    const matchesSearch = !searchQuery || m.name.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredItems = priceItems.filter((item) => {
+    const matchesTab = activeTab === 'All' || item.categoryGroup === activeTab;
+    const matchesSearch =
+      !searchQuery ||
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.categoryCode.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesTab && matchesSearch;
   });
 
-  const activeSelectedItem = priceItems.find(i => i.id === selectedItemId) || filteredItems[0] || priceItems[0];
+  const [selectedMatchOffer, setSelectedMatchOffer] = useState<{ item: MaterialPriceItem; rec: RecyclerOffer } | null>(null);
+  const [pickupDate, setPickupDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [pickupExactTime, setPickupExactTime] = useState<string>('14:30');
+  const [pickupWindow, setPickupWindow] = useState<'morning' | 'afternoon' | 'evening'>('afternoon');
+  const [isSubmittingMatch, setIsSubmittingMatch] = useState<boolean>(false);
+
+  const toggleExpand = (categoryCode: string) => {
+    setExpandedCategoryCode(prev => prev === categoryCode ? null : categoryCode);
+  };
+
+  const openMatchModal = (item: MaterialPriceItem, rec: RecyclerOffer) => {
+    setSelectedMatchOffer({ item, rec });
+  };
+
+  const confirmMatchAndSchedule = async () => {
+    if (!selectedMatchOffer) return;
+    setIsSubmittingMatch(true);
+    const { item, rec } = selectedMatchOffer;
+
+    const existingMaterials = await db.materials.toArray();
+    const existingUnmatchedMat = existingMaterials.slice().reverse().find(m => m.material_category === item.categoryCode) || existingMaterials[existingMaterials.length - 1];
+
+    let targetLotId: string;
+    let weightKg = 5.0;
+
+    if (existingUnmatchedMat) {
+      targetLotId = existingUnmatchedMat.lot_id;
+      weightKg = existingUnmatchedMat.approx_weight_kg || 5.0;
+    } else {
+      targetLotId = `LOT-${Date.now().toString(36).toUpperCase()}`;
+      const newMat: LocalMaterial = {
+        lot_id: targetLotId,
+        material_category: item.categoryCode,
+        sub_category: item.name,
+        approx_weight_kg: weightKg,
+        condition: 'intact',
+        source_type: 'household',
+        estimated_value: Math.round(rec.rate * weightKg),
+        collector_id: 'col-001',
+        created_at: new Date().toISOString(),
+      };
+      await db.materials.put(newMat);
+    }
+
+    const calculatedPayout = Math.round(rec.rate * weightKg);
+
+    const tx: LocalTransaction = {
+      lot_id: targetLotId,
+      collector_id: 'col-001',
+      recycler_id: rec.id,
+      recycler_name: rec.name,
+      recycler_auth_ref: rec.mpcbRef || 'MPCB/E-WASTE/2024/VERIFIED',
+      recycler_phone: rec.phone || '9876543210',
+      recycler_facility_address: rec.location || 'Pune',
+      status: 'matched',
+      quoted_price: calculatedPayout,
+      payment_method: 'upi',
+      payment_status: 'unpaid',
+      pickup_scheduled_date: pickupDate,
+      pickup_exact_time: pickupExactTime,
+      pickup_window: pickupWindow,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    await db.transactions.put(tx);
+
+    try {
+      await matchLotWithRecycler(targetLotId, rec.id, calculatedPayout);
+    } catch (e) {
+      console.warn('Backend match transition offline:', e);
+    }
+
+    setIsSubmittingMatch(false);
+    setSelectedMatchOffer(null);
+    navigate(`/handover/${targetLotId}`);
+  };
 
   return (
-    <div className="pb-24 pt-3 px-4 max-w-md mx-auto space-y-4 font-sans text-stone-900">
-      {/* Header bar matching Mobile Screen 3 (< Price Board) */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={() => navigate(-1)} className="p-1.5 rounded-full hover:bg-stone-200 text-stone-700 font-bold transition-colors">
-            <ArrowLeft size={20} />
+    <div className="pb-24 pt-4 px-4 sm:px-6 md:px-8 max-w-7xl mx-auto space-y-4 font-sans text-stone-900">
+      
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white rounded-3xl p-4 sm:p-5 border border-stone-200/80 shadow-xs">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="p-2 rounded-2xl hover:bg-stone-100 text-stone-700 transition-colors cursor-pointer"
+          >
+            <ArrowLeft size={18} />
           </button>
-          <h2 className="font-extrabold text-stone-900 text-base">Fair Price Index</h2>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-black text-stone-900 tracking-tight">Price Board</h1>
+            <div className="flex items-center gap-2 text-xs text-stone-500 font-medium mt-0.5">
+              <span className="flex items-center gap-1 font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                <MapPin size={12} className="text-[#16A34A]" />
+                {district} District
+              </span>
+              <span>• Registered buyer rates</span>
+            </div>
+          </div>
         </div>
 
-        {/* Sync Timestamp Pill */}
-        <div className="flex items-center gap-1 bg-emerald-50 text-emerald-800 text-[10px] font-extrabold px-3 py-1 rounded-full border border-emerald-200">
-          <Clock size={11} className="text-[#16A34A]" />
-          <span>Sync: {lastSyncTime}</span>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <div className="flex items-center gap-1.5 bg-stone-100 text-stone-700 text-xs font-bold px-3 py-1.5 rounded-full border border-stone-200">
+            <Clock size={12} className="text-[#16A34A]" />
+            <span>Sync: {lastSyncTime || 'Live'}</span>
+          </div>
         </div>
       </div>
 
-      {/* Location Selector */}
-      <div className="flex items-center justify-between text-xs text-stone-600 font-semibold">
-        <div className="flex items-center gap-1.5">
-          <MapPin size={14} className="text-[#16A34A]" />
-          <span>{district}</span>
+      {/* Search & Category Filter Bar */}
+      <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+        {/* Search Field */}
+        <div className="relative flex-1 max-w-md">
+          <Search size={15} className="absolute left-3.5 top-3 text-stone-400" />
+          <input
+            type="text"
+            placeholder="Search material category..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 bg-white border border-stone-200/80 rounded-2xl text-xs font-semibold text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] shadow-xs"
+          />
         </div>
-        <span className="text-[11px] text-stone-400 font-medium">Aggregated from local observation logs</span>
-      </div>
 
-      {/* Search Input */}
-      <div className="relative">
-        <Search size={16} className="absolute left-3.5 top-3 text-stone-400" />
-        <input
-          type="text"
-          placeholder="Search material category or sub-category..."
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-semibold text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-[#16A34A] shadow-xs"
-        />
-      </div>
-
-      {/* Category Filter Pills */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-0.5 scrollbar-hide">
-        {CATEGORY_TABS.map(tab => {
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
-                isActive
-                  ? 'bg-[#16A34A] text-white shadow-xs'
-                  : 'bg-white border border-stone-200 text-stone-700 hover:bg-stone-50'
-              }`}
-            >
-              <span>{tab.icon}</span>
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Material List Items */}
-      {loading ? (
-        <div className="p-8 text-center text-xs text-stone-500 font-semibold animate-pulse">
-          Fetching live price indices & observations...
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {filteredItems.map(item => {
-            const isSelected = selectedItemId === item.id;
+        {/* Category Tabs Scrollbar */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide">
+          {CATEGORY_TABS.map((tab) => {
+            const isActive = activeTab === tab.id;
             return (
-              <div
-                key={item.id}
-                onClick={() => setSelectedItemId(item.id)}
-                className={`bg-white rounded-3xl p-4 border shadow-xs space-y-3 transition-all cursor-pointer ${
-                  isSelected ? 'border-[#16A34A] ring-2 ring-[#16A34A]/20' : 'border-stone-200 hover:border-stone-300'
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-[#16A34A] text-white shadow-xs'
+                    : 'bg-white border border-stone-200/80 text-stone-700 hover:bg-stone-50'
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-amber-50 border border-amber-200/60 flex items-center justify-center text-2xl shrink-0 shadow-xs">
-                      {item.icon}
+                <span>{tab.icon}</span>
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Loading state */}
+      {loading ? (
+        <div className="p-8 text-center text-xs text-stone-500 font-semibold animate-pulse space-y-2 bg-white rounded-3xl border border-stone-200">
+          <Factory size={24} className="mx-auto text-stone-300 animate-spin" />
+          <p>Loading market prices for {district}...</p>
+        </div>
+      ) : (
+        /* Compact Responsive Multi-Column Desktop Grid */
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 items-start">
+          {filteredItems.map((item) => {
+            const isExpanded = expandedCategoryCode === item.categoryCode;
+            const minPt = Math.min(...item.pts);
+            const maxPt = Math.max(...item.pts);
+            const ptRange = maxPt - minPt || 1;
+
+            return (
+              <div
+                key={item.categoryCode}
+                className={`bg-white rounded-2xl border shadow-xs transition-all h-fit ${
+                  isExpanded
+                    ? 'border-[#16A34A] ring-2 ring-[#16A34A]/15 bg-emerald-50/10 p-3.5'
+                    : 'border-stone-200/80 hover:border-emerald-300 p-3.5'
+                }`}
+              >
+                {/* Collapsed Compact Card View */}
+                <div
+                  onClick={() => toggleExpand(item.categoryCode)}
+                  className="cursor-pointer space-y-2"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="text-2xl shrink-0">{item.icon}</span>
+                      <div className="min-w-0">
+                        <h3 className="font-extrabold text-stone-900 text-xs sm:text-sm truncate">{item.name}</h3>
+                        
+                        {/* Single Formal Price Display Only */}
+                        <div className="text-sm font-black text-[#16A34A] mt-0.5">
+                          ₹{item.fixedRate} <span className="text-[10px] font-medium text-stone-500">/kg</span>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <div className="font-extrabold text-stone-900 text-sm">{item.name}</div>
-                      <div className="text-xs font-black text-stone-900 mt-0.5">{item.range}</div>
-                      <div className={`text-[10px] font-extrabold mt-0.5 flex items-center gap-1 ${
-                        item.trendDirection === 'up' ? 'text-emerald-600' : item.trendDirection === 'down' ? 'text-rose-600' : 'text-stone-500'
-                      }`}>
-                        {item.trendDirection === 'up' ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-                        <span>{item.trend} (7-day trend)</span>
+
+                    {/* Sparkline & Audio button */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {/* SVG Waveform Sparkline Graph */}
+                      <svg width="46" height="18" viewBox="0 0 46 18" fill="none" className="shrink-0">
+                        <path
+                          d={item.pts
+                            .map(
+                              (v, i) =>
+                                `${i === 0 ? 'M' : 'L'} ${(i / (item.pts.length - 1)) * 46} ${
+                                  18 - ((v - minPt) / ptRange) * 14
+                                }`
+                            )
+                            .join(' ')}
+                          stroke="#16A34A"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+
+                      {/* Audio Button */}
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <AudioButton
+                          textToSpeak={`${item.name}. Formal rate is ${item.fixedRate} rupees per kg.`}
+                          size={14}
+                        />
+                      </div>
+
+                      <div className="text-stone-400">
+                        {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
                       </div>
                     </div>
                   </div>
-
-                  {/* Sparkline & Audio button */}
-                  <div className="flex items-center gap-3">
-                    {/* SVG Sparkline */}
-                    <svg width="60" height="24" viewBox="0 0 60 24" fill="none" className="shrink-0">
-                      <path
-                        d={item.pts.map((v, i) => `${i === 0 ? 'M' : 'L'} ${(i / (item.pts.length - 1)) * 60} ${24 - ((v - Math.min(...item.pts)) / (Math.max(...item.pts) - Math.min(...item.pts) || 1)) * 20}`).join(' ')}
-                        stroke={item.trendDirection === 'up' ? '#16A34A' : item.trendDirection === 'down' ? '#E11D48' : '#78716C'}
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-
-                    {/* Audio Button */}
-                    <AudioButton textToSpeak={`${item.name}. Verified recycler rate is ${item.range}.`} size={16} />
-                  </div>
                 </div>
+
+                {/* Minimalist Expanded Drawer (Remains compact in item cell) */}
+                {isExpanded && (
+                  <div className="mt-3 pt-3 border-t border-stone-200/80 space-y-2 text-xs animate-in fade-in duration-150">
+                    
+                    {/* Minimal Formal vs Informal Rate Line */}
+                    <div className="flex items-center justify-between bg-stone-50 p-2 rounded-xl text-[11px] font-semibold border border-stone-200/60">
+                      <span className="text-emerald-800">Formal: <strong className="text-[#16A34A] font-black">₹{item.fixedRate}/kg</strong></span>
+                      <span className="text-stone-500">Informal: <strong className="text-stone-700 font-bold">₹{item.informalRate}/kg</strong></span>
+                    </div>
+
+                    {/* Minimal Registered Buyers List */}
+                    <div className="space-y-1 pt-1">
+                      <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider px-0.5">
+                        Registered Buyers ({item.recyclers.length})
+                      </div>
+
+                      {item.recyclers.length === 0 ? (
+                        <div className="p-2 text-center text-[11px] text-stone-500 bg-stone-50 rounded-xl">
+                          Benchmark rate: <strong>₹{item.fixedRate}/kg</strong>
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5 max-h-44 overflow-y-auto pr-0.5">
+                          {item.recyclers.map((rec) => (
+                            <div
+                              key={rec.id}
+                              className="p-2 bg-stone-50/80 hover:bg-stone-100 rounded-xl border border-stone-200/60 flex items-center justify-between gap-2 text-xs transition-colors"
+                            >
+                              <div className="min-w-0 pr-1">
+                                <div className="font-bold text-stone-900 text-[11px] truncate">{rec.name}</div>
+                                <div className="text-[10px] text-stone-500 truncate">{rec.location} • {rec.distanceKm} km</div>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="font-black text-[11px] text-[#16A34A]">₹{rec.rate}/kg</span>
+                                <button
+                                  type="button"
+                                  onClick={() => openMatchModal(item, rec)}
+                                  className="p-1 rounded-lg bg-[#16A34A] text-white hover:bg-emerald-700 transition-colors cursor-pointer"
+                                  title="Sell to buyer"
+                                >
+                                  <ChevronRight size={13} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       )}
 
-      {/* Informal vs Verified Price Comparison Detail Box */}
-      {activeSelectedItem && (
-        <div className="bg-gradient-to-br from-stone-900 to-stone-950 text-white rounded-3xl p-5 border border-stone-800 space-y-3 shadow-xl">
-          <div className="flex items-center justify-between border-b border-white/10 pb-3">
-            <div>
-              <div className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-widest">Selected Price Detail</div>
-              <h3 className="font-extrabold text-white text-base mt-0.5">{activeSelectedItem.name}</h3>
-            </div>
-            <span className="text-[10px] font-bold bg-white/10 text-stone-300 px-3 py-1 rounded-full border border-white/10">
-              {activeSelectedItem.samples} Observations Logged
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="bg-white/10 p-3 rounded-2xl border border-white/10">
-              <div className="text-[10px] text-stone-400 font-bold uppercase">Informal Street Rate</div>
-              <div className="font-black text-amber-300 text-sm mt-1">{activeSelectedItem.informalRate}</div>
-              <div className="text-[10px] text-stone-400 mt-0.5">Unregulated middlemen</div>
-            </div>
-
-            <div className="bg-emerald-950/80 border border-emerald-500/40 p-3 rounded-2xl">
-              <div className="text-[10px] text-emerald-300 font-bold uppercase flex items-center gap-1">
-                <ShieldCheck size={12} className="text-emerald-400" />
-                <span>Verified Recyclers</span>
+      {/* Match Confirmation & Pickup Schedule Modal */}
+      {selectedMatchOffer && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl border border-stone-200 shadow-2xl p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-[#16A34A] flex items-center justify-center font-bold">
+                  <ShieldCheck size={18} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-stone-900 text-sm sm:text-base">Confirm Match & Schedule</h3>
+                  <p className="text-[11px] text-stone-500">Legal MPCB Traceability & Pickup Agreement</p>
+                </div>
               </div>
-              <div className="font-black text-emerald-400 text-sm mt-1">{activeSelectedItem.verifiedRate}</div>
-              <div className="text-[10px] text-emerald-200/80 mt-0.5">Guaranteed fair payout</div>
+              <button
+                type="button"
+                onClick={() => setSelectedMatchOffer(null)}
+                className="p-1.5 rounded-full hover:bg-stone-100 text-stone-400 hover:text-stone-600 transition-colors"
+              >
+                <X size={18} />
+              </button>
             </div>
-          </div>
 
-          <div className="flex items-center justify-between text-[11px] text-stone-400 pt-1">
-            <span>P25–P75 Interquartile: ₹{activeSelectedItem.marketLow} – ₹{activeSelectedItem.marketHigh}</span>
-            <span className="text-emerald-400 font-bold">Updated {activeSelectedItem.lastUpdated}</span>
+            {/* Recycler Authorized Details */}
+            <div className="bg-stone-50 border border-stone-200/80 rounded-2xl p-3.5 space-y-2">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h4 className="font-bold text-stone-900 text-xs sm:text-sm">{selectedMatchOffer.rec.name}</h4>
+                  <div className="flex items-center gap-1 text-[11px] text-emerald-700 font-semibold mt-0.5">
+                    <ShieldCheck size={13} />
+                    <span>MPCB Ref: {selectedMatchOffer.rec.mpcbRef || 'MPCB/E-WASTE/2024/VERIFIED'}</span>
+                  </div>
+                </div>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                  Verified Buyer
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-1 text-[11px] text-stone-600 border-t border-stone-200/50">
+                <div className="flex items-center gap-1.5">
+                  <Building size={13} className="text-stone-400 shrink-0" />
+                  <span className="truncate">{selectedMatchOffer.rec.location} ({selectedMatchOffer.rec.distanceKm} km)</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Phone size={13} className="text-stone-400 shrink-0" />
+                  <span>+91 {selectedMatchOffer.rec.phone || '9876543210'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Agreed Rate & Material summary */}
+            <div className="bg-emerald-50/50 border border-emerald-200/60 rounded-2xl p-3.5 flex items-center justify-between text-xs">
+              <div>
+                <span className="text-stone-500 font-medium">Material: </span>
+                <strong className="text-stone-900 font-bold">{selectedMatchOffer.item.name}</strong>
+                <div className="text-[11px] text-emerald-800 font-semibold mt-0.5">
+                  Rate: <strong>₹{selectedMatchOffer.rec.rate}/kg</strong>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-[10px] text-stone-500 uppercase tracking-wider font-semibold">Est. Payout</div>
+                <div className="text-base sm:text-lg font-black text-[#16A34A]">
+                  ₹{Math.round(selectedMatchOffer.rec.rate * 5.0)}
+                </div>
+                <div className="text-[9px] text-stone-400">@ 5.0 kg approx</div>
+              </div>
+            </div>
+
+            {/* Pickup Schedule Selector */}
+            <div className="space-y-2.5 pt-1">
+              <label className="block text-xs font-extrabold text-stone-800 flex items-center gap-1.5">
+                <Calendar size={14} className="text-[#16A34A]" />
+                Select Agreed Pickup Schedule
+              </label>
+
+              {/* Date quick select */}
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: 'Today', date: new Date().toISOString().split('T')[0] },
+                  { label: 'Tomorrow', date: new Date(Date.now() + 86400000).toISOString().split('T')[0] },
+                  { label: '+2 Days', date: new Date(Date.now() + 172800000).toISOString().split('T')[0] },
+                ].map((d) => (
+                  <button
+                    key={d.date}
+                    type="button"
+                    onClick={() => setPickupDate(d.date)}
+                    className={`py-2 px-2 rounded-xl text-xs font-bold border transition-all ${
+                      pickupDate === d.date
+                        ? 'border-[#16A34A] bg-emerald-600 text-white shadow-xs'
+                        : 'border-stone-200 bg-stone-50 text-stone-700 hover:bg-stone-100'
+                    }`}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Time Window Selector */}
+              <div className="grid grid-cols-3 gap-2 pt-1">
+                {[
+                  { key: 'morning', label: 'Morning', time: '9am–12pm' },
+                  { key: 'afternoon', label: 'Afternoon', time: '12pm–4pm' },
+                  { key: 'evening', label: 'Evening', time: '4pm–7pm' },
+                ].map((w) => (
+                  <button
+                    key={w.key}
+                    type="button"
+                    onClick={() => {
+                      setPickupWindow(w.key as any);
+                      if (w.key === 'morning') setPickupExactTime('09:30');
+                      else if (w.key === 'afternoon') setPickupExactTime('14:30');
+                      else if (w.key === 'evening') setPickupExactTime('17:30');
+                    }}
+                    className={`py-2 px-2 rounded-xl text-center border transition-all ${
+                      pickupWindow === w.key
+                        ? 'border-[#16A34A] bg-emerald-50 text-[#16A34A] ring-1 ring-[#16A34A]'
+                        : 'border-stone-200 bg-stone-50 text-stone-600 hover:bg-stone-100'
+                    }`}
+                  >
+                    <div className="text-[11px] font-bold">{w.label}</div>
+                    <div className="text-[9px] opacity-75">{w.time}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Submit CTA */}
+            <div className="pt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedMatchOffer(null)}
+                className="flex-1 py-3 px-4 rounded-xl border border-stone-200 font-bold text-stone-700 hover:bg-stone-50 text-xs transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingMatch}
+                onClick={confirmMatchAndSchedule}
+                className="flex-[2] py-3 px-4 rounded-xl bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold text-xs shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              >
+                {isSubmittingMatch ? (
+                  <span>Confirming...</span>
+                ) : (
+                  <>
+                    <Check size={16} />
+                    <span>Confirm & Match Lot</span>
+                  </>
+                )}
+              </button>
+            </div>
+
           </div>
         </div>
       )}
@@ -329,3 +687,4 @@ export const PriceBoardPage: React.FC = () => {
   );
 };
 
+export default PriceBoardPage;

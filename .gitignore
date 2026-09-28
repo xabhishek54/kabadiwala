@@ -53,6 +53,19 @@ ml/*.h5
 ml/*.pt
 ml/*.onnx
 
+# Capacitor / Android build artifacts
+frontend/android/jdk*/
+frontend/android/*.tar.gz
+frontend/android/*.zip
+frontend/android/.gradle/
+frontend/android/build/
+frontend/android/app/build/
+frontend/android/.idea/
+frontend/android/captures/
+*.apk
+*.aab
+*.keystore
+
 # IDE & OS
 .DS_Store
 Thumbs.db

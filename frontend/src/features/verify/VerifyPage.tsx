@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { ShieldCheck, ShieldAlert, Search, Package, Award, UserCheck, Factory, QrCode, X } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Search, Package, Award, UserCheck, Factory, QrCode, X, BookOpen } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { API_BASE_URL } from '../../data/remote/apiClient';
 
@@ -106,70 +106,74 @@ export const VerifyPage: React.FC = () => {
   };
 
   return (
-    <div className="pb-24 pt-4 px-4 max-w-md mx-auto space-y-4">
-      {/* Header */}
-      <div className="bg-surface-card rounded-card p-4 border border-surface-border shadow-soft text-center space-y-2">
-        <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center mx-auto shadow-xs">
-          <ShieldCheck size={28} />
+    <div className="pb-24 pt-4 px-4 sm:px-6 md:px-8 max-w-7xl mx-auto space-y-6 font-sans text-stone-900">
+      {/* Compact Header */}
+      <div className="bg-white rounded-3xl p-4 sm:p-5 border border-stone-200/80 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
+            <ShieldCheck size={22} />
+          </div>
+          <div>
+            <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-stone-900">Public Verification Portal</h2>
+            <p className="text-xs text-stone-500 font-medium">
+              Verify MPCB Recycler Licenses, Collection Agent Badges & Lot Chain-of-Custody.
+            </p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-lg font-bold text-stone-900 leading-tight">Public Verification Portal</h2>
-          <p className="text-xs text-stone-500 font-medium">Verify Recycler Authorization Badges & Lot Authenticity</p>
-        </div>
+
+        <button
+          type="button"
+          onClick={startScanner}
+          className="w-full sm:w-auto bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold px-4 py-2.5 rounded-2xl flex items-center justify-center space-x-2 shadow-xs transition-all text-xs cursor-pointer shrink-0"
+        >
+          <QrCode size={16} />
+          <span>Scan Badge / QR</span>
+        </button>
       </div>
 
-      {/* Search Bar & QR Button */}
-      <div className="space-y-2">
-        <form onSubmit={handleSearch} className="flex space-x-2">
+      {/* Search Bar */}
+      <div className="bg-white rounded-3xl p-5 border border-stone-200/80 shadow-xs space-y-3">
+        <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+            <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
             <input
               type="text"
-              placeholder="Enter Lot ID, Recycler Ref #, or Agent Badge ID..."
+              placeholder="Enter Lot ID (e.g. LOT-101), Recycler Ref #, or Agent Badge ID..."
               value={query}
               onChange={e => setQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-stone-300 bg-white font-medium focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
+              className="w-full pl-10 pr-4 py-3 text-xs font-semibold rounded-2xl border border-stone-200 bg-stone-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] shadow-xs"
             />
           </div>
           <button
             type="submit"
             disabled={loading}
-            className="tap-target px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors shrink-0"
+            className="px-6 py-3 bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold text-xs rounded-2xl shadow-xs transition-all shrink-0 cursor-pointer"
           >
-            {loading ? 'Verifying...' : 'Verify'}
+            {loading ? 'Verifying Record...' : 'Verify Now'}
           </button>
         </form>
-
-        <button
-          type="button"
-          onClick={startScanner}
-          className="w-full py-2.5 px-4 bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 rounded-xl text-xs font-bold flex items-center justify-center space-x-2 transition-colors shadow-xs"
-        >
-          <QrCode size={16} />
-          <span>Scan Badge / QR Code with Camera</span>
-        </button>
       </div>
 
       {/* Camera QR Scanner Modal */}
       {showScanner && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-4 w-full max-w-sm space-y-3 relative">
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl p-5 w-full max-w-md space-y-4 relative shadow-2xl">
             <button
               onClick={stopScanner}
-              className="absolute top-3 right-3 p-1.5 rounded-full bg-stone-100 text-stone-600 hover:bg-stone-200"
+              className="absolute top-4 right-4 p-2 rounded-full bg-stone-100 text-stone-600 hover:bg-stone-200 transition-colors"
             >
               <X size={18} />
             </button>
             <div className="text-center">
-              <h3 className="font-bold text-stone-900 text-sm">Scan Verification QR Code</h3>
-              <p className="text-[11px] text-stone-500">Point your camera at a lot QR code or recycler badge</p>
+              <h3 className="font-extrabold text-stone-900 text-base">Scan Verification QR Code</h3>
+              <p className="text-xs text-stone-500 font-medium">Point your device camera at a scrap lot QR code or authorized badge</p>
             </div>
-            <div id="qr-reader" className="overflow-hidden rounded-xl bg-stone-900 min-h-[220px]"></div>
+            <div id="qr-reader" className="overflow-hidden rounded-2xl bg-stone-900 min-h-[240px]"></div>
             <button
               onClick={stopScanner}
-              className="w-full py-2 bg-stone-200 text-stone-800 text-xs font-bold rounded-xl"
+              className="w-full py-2.5 bg-stone-200 text-stone-800 text-xs font-bold rounded-2xl hover:bg-stone-300 transition-colors"
             >
-              Cancel
+              Cancel Scanner
             </button>
           </div>
         </div>
@@ -177,51 +181,57 @@ export const VerifyPage: React.FC = () => {
 
       {/* Lookup Result */}
       {searched && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {error ? (
-            <div className="bg-rose-50 border border-rose-200 rounded-card p-4 text-center text-rose-800 text-xs space-y-1">
-              <ShieldAlert size={28} className="mx-auto text-rose-600" />
-              <p className="font-bold">Record Not Found / Unverified</p>
-              <p className="text-[11px] text-rose-700">{error}</p>
+            <div className="bg-rose-50 border border-rose-200 rounded-3xl p-6 text-center text-rose-800 text-xs space-y-2">
+              <ShieldAlert size={32} className="mx-auto text-rose-600" />
+              <p className="font-extrabold text-sm">Record Not Found / Unverified</p>
+              <p className="text-xs text-rose-700">{error}</p>
             </div>
           ) : result ? (
-            <div className={`rounded-card p-5 border shadow-soft space-y-3 ${
+            <div className={`rounded-3xl p-6 border shadow-xs space-y-4 transition-all ${
               result.is_valid ? 'bg-emerald-50/80 border-emerald-200' : 'bg-amber-50/80 border-amber-200'
             }`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  {result.type === 'lot' && <Package className="text-emerald-700" size={24} />}
-                  {result.type === 'recycler' && <Factory className="text-emerald-700" size={24} />}
-                  {result.type === 'collection_agent' && <Award className="text-emerald-700" size={24} />}
-                  {result.type === 'collector' && <UserCheck className="text-emerald-700" size={24} />}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center space-x-3">
+                  <div className="w-12 h-12 rounded-2xl bg-white border border-emerald-200 flex items-center justify-center text-emerald-700 shadow-xs shrink-0">
+                    {result.type === 'lot' && <Package size={26} />}
+                    {result.type === 'recycler' && <Factory size={26} />}
+                    {result.type === 'collection_agent' && <Award size={26} />}
+                    {result.type === 'collector' && <UserCheck size={26} />}
+                  </div>
                   <div>
-                    <span className="text-[10px] uppercase tracking-wider font-bold text-stone-500">{result.type} Record</span>
-                    <h3 className="font-bold text-stone-900 text-base leading-tight">{result.name_or_title}</h3>
+                    <span className="text-[10px] uppercase tracking-wider font-extrabold text-stone-500">{result.type} Record</span>
+                    <h3 className="font-black text-stone-900 text-lg leading-tight">{result.name_or_title}</h3>
                   </div>
                 </div>
 
-                <span className={`px-2.5 py-1 rounded-full text-xs font-black uppercase flex items-center space-x-1 ${
-                  result.is_valid ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-white'
+                <span className={`px-4 py-1.5 rounded-full text-xs font-black uppercase flex items-center justify-center space-x-1.5 self-start sm:self-center shrink-0 ${
+                  result.is_valid ? 'bg-[#16A34A] text-white shadow-xs' : 'bg-amber-500 text-white'
                 }`}>
-                  {result.is_valid ? 'Verified ✓' : 'Unverified'}
+                  {result.is_valid ? 'Verified Record ✓' : 'Unverified Record'}
                 </span>
               </div>
 
-              <div className="bg-white/80 rounded-xl p-3 border border-stone-200 space-y-1.5 text-xs text-stone-700">
-                <div className="font-mono text-[11px] font-bold text-stone-900 border-b border-stone-100 pb-1">
-                  ID: {result.id}
+              <div className="bg-white/90 rounded-2xl p-4 border border-stone-200/80 space-y-2 text-xs text-stone-700">
+                <div className="font-mono text-xs font-black text-stone-900 border-b border-stone-100 pb-2 flex justify-between">
+                  <span>Identifier Ref #:</span>
+                  <span className="text-[#16A34A]">{result.id}</span>
                 </div>
-                {Object.entries(result.details).map(([k, v]) => (
-                  <div key={k} className="flex justify-between py-0.5 border-b border-stone-50">
-                    <span className="text-stone-500 capitalize">{k.replace(/_/g, ' ')}:</span>
-                    <span className="font-semibold text-stone-900">{v ? v.toString() : 'N/A'}</span>
-                  </div>
-                ))}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  {Object.entries(result.details).map(([k, v]) => (
+                    <div key={k} className="flex justify-between py-1 border-b border-stone-50 text-xs">
+                      <span className="text-stone-500 font-medium capitalize">{k.replace(/_/g, ' ')}:</span>
+                      <span className="font-extrabold text-stone-900">{v ? v.toString() : 'N/A'}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              <p className="text-[10px] text-stone-500 font-medium text-center">
-                Verified on-chain tamper-proof traceability index — Kabadiwala Connect
-              </p>
+              <div className="flex items-center justify-center space-x-2 text-xs font-bold text-stone-500 pt-1">
+                <BookOpen size={14} className="text-[#16A34A]" />
+                <span>Verified tamper-proof chain-of-custody index — Kabadiwala Connect</span>
+              </div>
             </div>
           ) : null}
         </div>
@@ -229,3 +239,4 @@ export const VerifyPage: React.FC = () => {
     </div>
   );
 };
+

@@ -7,12 +7,12 @@ import enTranslation from './locales/en.json';
 const getSavedLanguage = () => {
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
-      return localStorage.getItem('kabadiwala_lang') || 'hi';
+      return localStorage.getItem('kabadiwala_lang') || 'en';
     }
   } catch (e) {
     // Fallback if localStorage is inaccessible
   }
-  return 'hi';
+  return 'en';
 };
 
 i18n
@@ -24,7 +24,7 @@ i18n
       en: { translation: enTranslation },
     },
     lng: getSavedLanguage(),
-    fallbackLng: 'hi',
+    fallbackLng: 'en',
     interpolation: {
       escapeValue: false,
     },

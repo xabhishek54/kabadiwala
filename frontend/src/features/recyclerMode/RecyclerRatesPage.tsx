@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, CheckCircle2, Factory, RefreshCw, MapPin } from 'lucide-react';
+import { Save, CheckCircle2, Factory, RefreshCw, MapPin, Search, Tag } from 'lucide-react';
 import { updateRecyclerRates, API_BASE_URL } from '../../data/remote/apiClient';
 import { LocationPickerModal } from '../../components/LocationPickerModal';
 
@@ -11,14 +11,6 @@ export const RecyclerRatesPage: React.FC = () => {
   const [facilityLat, setFacilityLat] = useState<number>(parseFloat(localStorage.getItem('kabadiwala_recycler_lat') || '18.5089'));
   const [facilityLng, setFacilityLng] = useState<number>(parseFloat(localStorage.getItem('kabadiwala_recycler_lng') || '73.9259'));
 
-  const handleSelectFacilityLocation = (lat: number, lng: number, address: string) => {
-    setFacilityLat(lat);
-    setFacilityLng(lng);
-    setFacilityAddress(address);
-    localStorage.setItem('kabadiwala_recycler_lat', lat.toString());
-    localStorage.setItem('kabadiwala_recycler_lng', lng.toString());
-    localStorage.setItem('kabadiwala_recycler_address', address);
-  };
   const [rates, setRates] = useState<Record<string, number>>({
     PCB: 260.0,
     BATTERY: 90.0,
@@ -33,12 +25,23 @@ export const RecyclerRatesPage: React.FC = () => {
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [pickupAvailable, setPickupAvailable] = useState(true);
   const [serviceRadius, setServiceRadius] = useState<number>(10);
-  const [materialsAccepted, setMaterialsAccepted] = useState<string[]>(['PCB', 'BATTERY', 'CABLE']);
+  const [materialsAccepted, setMaterialsAccepted] = useState<string[]>(['PCB', 'BATTERY', 'CABLE', 'LCD_PANEL', 'MOTOR_MAGNET']);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState('ALL');
 
   const allMaterials = ['PCB', 'BATTERY', 'CABLE', 'LCD_PANEL', 'CRT', 'MOTOR_MAGNET', 'MIXED_PLASTIC', 'IRON', 'ALUMINIUM', 'NEWSPAPER'];
 
-  const toggleMaterial = (cat: string) => {
-    setMaterialsAccepted(prev => prev.includes(cat) ? prev.filter(m => m !== cat) : [...prev, cat]);
+  const categoryLabels: Record<string, { label: string; icon: string; benchmark: number }> = {
+    PCB: { label: 'Circuit Board (PCB)', icon: '🖥️', benchmark: 275.0 },
+    BATTERY: { label: 'Battery & Cells', icon: '🔋', benchmark: 95.0 },
+    CABLE: { label: 'Copper Cable Wire', icon: '🔌', benchmark: 155.0 },
+    LCD_PANEL: { label: 'LCD Screen Panel', icon: '📺', benchmark: 115.0 },
+    CRT: { label: 'CRT TV Vacuum Glass', icon: '📺', benchmark: 42.0 },
+    MOTOR_MAGNET: { label: 'Motor & Neodymium Magnet', icon: '🧲', benchmark: 75.0 },
+    MIXED_PLASTIC: { label: 'Mixed E-Waste Plastic Body', icon: '♻️', benchmark: 28.0 },
+    IRON: { label: 'Scrap Iron & Steel', icon: '⚙️', benchmark: 35.0 },
+    ALUMINIUM: { label: 'Aluminium Heat Sinks', icon: '🔩', benchmark: 140.0 },
+    NEWSPAPER: { label: 'Paper & Cardboard Packaging', icon: '📰', benchmark: 18.0 },
   };
 
   useEffect(() => {
@@ -53,14 +56,17 @@ export const RecyclerRatesPage: React.FC = () => {
     }
   }, []);
 
-  const categoryLabels: Record<string, { label: string; icon: string }> = {
-    PCB: { label: 'Circuit Board (PCB)', icon: '🔌' },
-    BATTERY: { label: 'Battery / Cell', icon: '🔋' },
-    CABLE: { label: 'Copper Cable', icon: '🧵' },
-    LCD_PANEL: { label: 'LCD Screen', icon: '🖥️' },
-    CRT: { label: 'CRT TV Vacuum Glass', icon: '📺' },
-    MOTOR_MAGNET: { label: 'Motor / Magnet', icon: '🧲' },
-    MIXED_PLASTIC: { label: 'Plastic Body', icon: '♻️' },
+  const handleSelectFacilityLocation = (lat: number, lng: number, address: string) => {
+    setFacilityLat(lat);
+    setFacilityLng(lng);
+    setFacilityAddress(address);
+    localStorage.setItem('kabadiwala_recycler_lat', lat.toString());
+    localStorage.setItem('kabadiwala_recycler_lng', lng.toString());
+    localStorage.setItem('kabadiwala_recycler_address', address);
+  };
+
+  const toggleMaterial = (cat: string) => {
+    setMaterialsAccepted(prev => prev.includes(cat) ? prev.filter(m => m !== cat) : [...prev, cat]);
   };
 
   const handleRateChange = (cat: string, val: string) => {
@@ -72,7 +78,6 @@ export const RecyclerRatesPage: React.FC = () => {
     setIsSaving(true);
     try {
       await updateRecyclerRates(recyclerId, rates);
-      // Also update pickup/service config
       await fetch(`${API_BASE_URL}/recyclers/${encodeURIComponent(recyclerId)}/config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -81,7 +86,7 @@ export const RecyclerRatesPage: React.FC = () => {
           service_radius_km: serviceRadius,
           materials_accepted: materialsAccepted,
         }),
-      }).catch(() => {}); // Non-fatal if endpoint not yet deployed
+      }).catch(() => {});
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 3000);
     } catch (e) {
@@ -91,148 +96,33 @@ export const RecyclerRatesPage: React.FC = () => {
     }
   };
 
+  const availableCategories = Object.keys(rates);
+
+  const filteredCategories = availableCategories.filter(cat => {
+    const meta = categoryLabels[cat] || { label: cat, icon: '📦', benchmark: 0 };
+    const matchesSearch = searchQuery === '' || meta.label.toLowerCase().includes(searchQuery.toLowerCase()) || cat.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesTab = activeCategoryFilter === 'ALL' || cat === activeCategoryFilter;
+    return matchesSearch && matchesTab;
+  });
+
   return (
-    <div className="pb-24 pt-4 px-4 max-w-md mx-auto space-y-4">
-      {/* Header Banner */}
-      <div className="bg-stone-900 text-white rounded-card p-4 shadow-soft flex items-center justify-between border border-stone-800">
-        <div>
-          <div className="flex items-center space-x-1.5 text-xs font-semibold text-amber-400 mb-1">
-            <Factory size={14} />
-            <span>Rate Management Portal</span>
+    <div className="pb-24 pt-4 px-4 sm:px-6 md:px-8 max-w-7xl mx-auto space-y-6 font-sans text-stone-900">
+      {/* Compact Header */}
+      <div className="bg-white rounded-3xl p-4 sm:p-5 border border-stone-200/80 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
+            <Tag size={22} />
           </div>
-          <h2 className="text-xl font-bold leading-tight">{recyclerName}</h2>
-          <p className="text-xs text-stone-400 font-medium">खालील दर कबाड़ीवाल्यांच्या मॅचिंग अल्गोरिदमला अपडेट करतील</p>
-        </div>
-      </div>
-
-      {savedSuccess && (
-        <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3 text-emerald-800 text-xs font-bold flex items-center space-x-2 animate-fade-in">
-          <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
-          <span>दर यशस्वीरित्या अपडेट झाले! (Buying rates updated successfully!)</span>
-        </div>
-      )}
-
-      {/* Category Rate Inputs */}
-      <div className="bg-surface-card rounded-card p-4 border border-surface-border shadow-soft space-y-3">
-        <h3 className="font-bold text-stone-900 text-sm flex items-center justify-between">
-          <span>खरेदी दर प्रति किलो (Buying Rate per kg)</span>
-          <span className="text-stone-400 text-xs font-normal">INR ₹ / kg</span>
-        </h3>
-
-        <div className="space-y-2.5">
-          {Object.keys(rates).map((cat) => {
-            const meta = categoryLabels[cat] || { label: cat, icon: '📦' };
-
-            return (
-              <div key={cat} className="flex items-center justify-between bg-stone-50 p-3 rounded-xl border border-stone-200">
-                <div className="flex items-center space-x-2.5">
-                  <span className="text-xl">{meta.icon}</span>
-                  <div>
-                    <div className="font-bold text-stone-900 text-xs">{meta.label}</div>
-                    <div className="text-[10px] text-stone-500 font-medium">Category: {cat}</div>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-1.5">
-                  <span className="text-stone-500 font-bold text-xs">₹</span>
-                  <input
-                    type="number"
-                    step="0.5"
-                    value={rates[cat]}
-                    onChange={(e) => handleRateChange(cat, e.target.value)}
-                    className="w-20 p-2 text-sm font-black font-mono text-stone-900 border border-stone-300 rounded-lg text-right bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Pickup & Service Config — matching engine inputs */}
-        <div className="border-t border-stone-200 pt-3 mt-1 space-y-3">
-          <h3 className="font-bold text-stone-900 text-sm">Pickup & Service Area Config</h3>
-
-          {/* Pickup Toggle */}
-          <div className="flex items-center justify-between bg-stone-50 p-3 rounded-xl border border-stone-200">
-            <div>
-              <div className="font-bold text-stone-900 text-xs">🚚 Pickup Available</div>
-              <div className="text-[10px] text-stone-500">Do you offer material pickup service?</div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-stone-900">{recyclerName} — Buying Rates</h2>
+              <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-200">
+                Live Pricing Engine
+              </span>
             </div>
-            <button
-              type="button"
-              onClick={() => setPickupAvailable(p => !p)}
-              className={`relative w-11 h-6 rounded-full transition-colors ${pickupAvailable ? 'bg-emerald-500' : 'bg-stone-300'}`}
-            >
-              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${pickupAvailable ? 'translate-x-5' : ''}`} />
-            </button>
-          </div>
-
-          {/* Facility OpenStreetMap Exact Location Card */}
-          <div className="bg-[#F0FDF4] border border-[#DCFCE7] rounded-xl p-3 space-y-2">
-            <div className="flex items-center justify-between text-xs font-bold text-emerald-900">
-              <span>📍 Facility OpenStreetMap GPS:</span>
-              <span className="font-mono text-[10px] text-emerald-700">{facilityLat.toFixed(3)}, {facilityLng.toFixed(3)}</span>
-            </div>
-            <div className="text-xs font-black text-stone-900 truncate">{facilityAddress}</div>
-            <button
-              type="button"
-              onClick={() => setShowMapPicker(true)}
-              className="w-full bg-[#16A34A] hover:bg-emerald-700 text-white font-bold text-xs py-2 rounded-lg shadow-xs flex items-center justify-center gap-1 transition-all"
-            >
-              <MapPin size={14} />
-              <span>Set Facility Location on OpenStreetMap</span>
-            </button>
-          </div>
-
-          {/* Service Radius */}
-          {pickupAvailable && (
-            <div className="flex items-center justify-between bg-stone-50 p-3 rounded-xl border border-stone-200">
-              <div className="font-bold text-stone-900 text-xs">📍 Service Radius</div>
-              <select
-                value={serviceRadius}
-                onChange={e => setServiceRadius(Number(e.target.value))}
-                className="text-xs font-bold p-2 rounded-lg border border-stone-300 bg-white focus:ring-2 focus:ring-amber-500"
-              >
-                {[5, 10, 20, 50, 100].map(r => (
-                  <option key={r} value={r}>{r} km</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* OpenStreetMap Modal */}
-          <LocationPickerModal
-            isOpen={showMapPicker}
-            onClose={() => setShowMapPicker(false)}
-            onSelectLocation={handleSelectFacilityLocation}
-            initialLat={facilityLat}
-            initialLng={facilityLng}
-            title="Set Recycling Facility OpenStreetMap Location"
-          />
-
-          {/* Materials Accepted */}
-          <div className="bg-stone-50 p-3 rounded-xl border border-stone-200 space-y-2">
-            <div className="font-bold text-stone-900 text-xs">✅ Materials Accepted</div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {allMaterials.map(cat => {
-                const meta = categoryLabels[cat] || { label: cat, icon: '📦' };
-                const checked = materialsAccepted.includes(cat);
-                return (
-                  <button
-                    key={cat}
-                    type="button"
-                    onClick={() => toggleMaterial(cat)}
-                    className={`flex items-center space-x-1.5 p-2 rounded-lg border text-[11px] font-bold transition-all ${
-                      checked ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-white border-stone-200 text-stone-500'
-                    }`}
-                  >
-                    <span>{meta.icon}</span>
-                    <span className="truncate">{meta.label.split('(')[0].trim()}</span>
-                    {checked && <span className="ml-auto">✓</span>}
-                  </button>
-                );
-              })}
-            </div>
+            <p className="text-xs text-stone-500 font-medium">
+              Configure your custom buying rates (₹ / kg) for automated matching with local collectors.
+            </p>
           </div>
         </div>
 
@@ -240,12 +130,208 @@ export const RecyclerRatesPage: React.FC = () => {
           type="button"
           disabled={isSaving}
           onClick={handleSaveRates}
-          className="w-full bg-stone-900 hover:bg-stone-800 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center space-x-2 shadow-md active:scale-95 transition-all text-xs disabled:opacity-50 mt-4"
+          className="w-full sm:w-auto bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold px-4 py-2.5 rounded-2xl flex items-center justify-center space-x-2 shadow-xs transition-all text-xs disabled:opacity-50 cursor-pointer shrink-0"
         >
-          {isSaving ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
-          <span>{isSaving ? 'अपडेट होत आहे...' : 'Save Rates & Config'}</span>
+          {isSaving ? <RefreshCw size={15} className="animate-spin" /> : <Save size={15} />}
+          <span>{isSaving ? 'Saving...' : 'Save Buying Rates & Config'}</span>
         </button>
       </div>
+
+      {savedSuccess && (
+        <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-4 text-emerald-900 text-xs font-bold flex items-center space-x-3 shadow-xs animate-fade-in">
+          <CheckCircle2 size={20} className="text-[#16A34A] shrink-0" />
+          <span>Rates & matching engine configuration saved successfully! (दर यशस्वीरित्या अपडेट झाले!)</span>
+        </div>
+      )}
+
+      {/* Minimalist Price Board Controls (Search & Category Bar) */}
+      <div className="bg-white rounded-3xl p-5 border border-stone-200/80 shadow-xs space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="relative flex-1 max-w-md">
+            <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
+            <input
+              type="text"
+              placeholder="Search material category or rate code..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 text-xs font-semibold rounded-2xl border border-stone-200 bg-stone-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] shadow-xs"
+            />
+          </div>
+
+          {/* Quick Filter Tabs */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide">
+            {['ALL', 'PCB', 'BATTERY', 'CABLE', 'LCD_PANEL', 'MOTOR_MAGNET'].map(cat => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setActiveCategoryFilter(cat)}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  activeCategoryFilter === cat
+                    ? 'bg-[#16A34A] text-white shadow-xs'
+                    : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Responsive Grid of Minimalist Buying Rate Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {filteredCategories.map((cat) => {
+          const meta = categoryLabels[cat] || { label: cat, icon: '📦', benchmark: 0 };
+          const isAccepted = materialsAccepted.includes(cat);
+
+          return (
+            <div
+              key={cat}
+              className={`bg-white rounded-3xl p-4 border transition-all flex flex-col justify-between space-y-3 ${
+                isAccepted ? 'border-stone-200/80 shadow-xs hover:border-emerald-300' : 'border-stone-200 bg-stone-50/50 opacity-75'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center space-x-3">
+                  <div className="w-11 h-11 rounded-2xl bg-amber-50 border border-amber-200/60 flex items-center justify-center text-xl shrink-0">
+                    {meta.icon}
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-stone-900 text-xs leading-tight">{meta.label}</h4>
+                    <span className="text-[10px] font-mono text-stone-500 font-bold">Category: {cat}</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => toggleMaterial(cat)}
+                  className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full shrink-0 transition-all cursor-pointer ${
+                    isAccepted ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-600'
+                  }`}
+                >
+                  {isAccepted ? 'Active ✓' : 'Disabled'}
+                </button>
+              </div>
+
+              {/* Rate Edit & Benchmark Section */}
+              <div className="bg-stone-50 rounded-2xl p-3 border border-stone-200/60 flex items-center justify-between">
+                <div>
+                  <span className="text-stone-400 block text-[10px] font-semibold">MARKET BENCHMARK</span>
+                  <span className="text-stone-600 font-extrabold text-xs">₹{meta.benchmark} / kg</span>
+                </div>
+
+                <div className="flex items-center space-x-1.5">
+                  <span className="text-stone-500 font-black text-xs">₹</span>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={rates[cat]}
+                    onChange={(e) => handleRateChange(cat, e.target.value)}
+                    className="w-24 px-3 py-1.5 text-sm font-black font-mono text-stone-900 border border-stone-300 rounded-xl text-right bg-white focus:ring-2 focus:ring-[#16A34A]/30 focus:border-[#16A34A] focus:outline-none shadow-xs"
+                  />
+                  <span className="text-stone-500 text-[10px] font-bold">/kg</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Facility Service Area & OpenStreetMap Location Config — 2 Column Responsive Layout */}
+      <div className="bg-white rounded-3xl p-5 border border-stone-200/80 shadow-xs space-y-4">
+        <h3 className="font-black text-stone-900 text-base flex items-center space-x-2">
+          <Factory size={18} className="text-[#16A34A]" />
+          <span>Facility Service Area & OpenStreetMap Location</span>
+        </h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Left Column: Pickup & Location controls */}
+          <div className="space-y-3">
+            {/* Pickup Toggle */}
+            <div className="flex items-center justify-between bg-stone-50 p-3.5 rounded-2xl border border-stone-200/60">
+              <div>
+                <div className="font-extrabold text-stone-900 text-xs">🚚 Pickup Service Available</div>
+                <div className="text-[10px] text-stone-500 font-medium">Do you offer scrap pickup for matched collectors?</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPickupAvailable(p => !p)}
+                className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer ${pickupAvailable ? 'bg-[#16A34A]' : 'bg-stone-300'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${pickupAvailable ? 'translate-x-5' : ''}`} />
+              </button>
+            </div>
+
+            {/* Service Radius */}
+            {pickupAvailable && (
+              <div className="flex items-center justify-between bg-stone-50 p-3.5 rounded-2xl border border-stone-200/60">
+                <div className="font-extrabold text-stone-900 text-xs">📍 Maximum Service Radius</div>
+                <select
+                  value={serviceRadius}
+                  onChange={e => setServiceRadius(Number(e.target.value))}
+                  className="text-xs font-extrabold p-2 rounded-xl border border-stone-300 bg-white focus:ring-2 focus:ring-[#16A34A]/20 cursor-pointer"
+                >
+                  {[5, 10, 20, 50, 100].map(r => (
+                    <option key={r} value={r}>{r} km Radius</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Facility OpenStreetMap Exact Location Card */}
+            <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-2xl p-3.5 space-y-2">
+              <div className="flex items-center justify-between text-xs font-extrabold text-emerald-900">
+                <span>📍 OpenStreetMap GPS Coordinates:</span>
+                <span className="font-mono text-[10px] text-emerald-700">{facilityLat.toFixed(4)}, {facilityLng.toFixed(4)}</span>
+              </div>
+              <div className="text-xs font-black text-stone-900 truncate">{facilityAddress}</div>
+              <button
+                type="button"
+                onClick={() => setShowMapPicker(true)}
+                className="w-full bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold text-xs py-2 rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                <MapPin size={14} />
+                <span>Set Facility Location on OpenStreetMap</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Right Column: Accepted Materials Matrix */}
+          <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200/60 space-y-3">
+            <div className="font-extrabold text-stone-900 text-xs">✅ Materials Accepted Matrix</div>
+            <div className="grid grid-cols-2 gap-2">
+              {allMaterials.map(cat => {
+                const meta = categoryLabels[cat] || { label: cat, icon: '📦', benchmark: 0 };
+                const checked = materialsAccepted.includes(cat);
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => toggleMaterial(cat)}
+                    className={`flex items-center space-x-2 p-2.5 rounded-xl border text-[11px] font-extrabold transition-all cursor-pointer ${
+                      checked ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-white border-stone-200 text-stone-400'
+                    }`}
+                  >
+                    <span className="text-base">{meta.icon}</span>
+                    <span className="truncate">{cat}</span>
+                    {checked && <span className="ml-auto text-emerald-600 font-bold">✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* OpenStreetMap Modal */}
+      <LocationPickerModal
+        isOpen={showMapPicker}
+        onClose={() => setShowMapPicker(false)}
+        onSelectLocation={handleSelectFacilityLocation}
+        initialLat={facilityLat}
+        initialLng={facilityLng}
+        title="Set Recycling Facility OpenStreetMap Location"
+      />
     </div>
   );
 };

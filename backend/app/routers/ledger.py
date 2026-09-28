@@ -5,11 +5,50 @@ from app.database import get_db
 from app.models.collector import Collector
 from app.models.transaction import Transaction
 from app.models.material import Material
+from app.models.recycler import Recycler
 from app.models.enums import TransactionStatus, PaymentStatus, AccountType
 
 router = APIRouter(prefix="/ledger", tags=["ledger"])
 
-from app.models.recycler import Recycler
+
+def _build_item(tx: Transaction, mat: Material, recycler: Optional[Recycler] = None) -> Dict[str, Any]:
+    """Build a fully-populated traceability item dict from a transaction+material pair."""
+    val = tx.final_sale_value or tx.quoted_price or mat.estimated_value or 0.0
+    return {
+        # Core identifiers
+        "lot_id": tx.lot_id,
+        "collector_id": tx.collector_id,
+        # Material fields
+        "material_category": mat.material_category.value if hasattr(mat.material_category, 'value') else str(mat.material_category),
+        "sub_category": mat.sub_category,
+        "description": mat.description,
+        "image_ref": mat.image_ref,
+        "weight_kg": mat.approx_weight_kg,
+        "condition": mat.condition.value if mat.condition else None,
+        "source_type": mat.source_type.value if mat.source_type else None,
+        # Pricing fields (all three price stages)
+        "estimated_value": mat.estimated_value,
+        "quoted_price": tx.quoted_price,
+        "final_sale_value": tx.final_sale_value,
+        "amount": val,
+        # Transaction status
+        "status": tx.status.value if hasattr(tx.status, 'value') else str(tx.status),
+        "payment_status": tx.payment_status.value if hasattr(tx.payment_status, 'value') else str(tx.payment_status),
+        "payment_method": tx.payment_method.value if hasattr(tx.payment_method, 'value') else str(tx.payment_method),
+        # Location — collection point and handover point
+        "collection_lat": tx.collection_lat,
+        "collection_lng": tx.collection_lng,
+        "handover_lat": tx.handover_lat,
+        "handover_lng": tx.handover_lng,
+        # Recycler details (denormalized for traceability)
+        "recycler_id": tx.recycler_id,
+        "recycler_name": recycler.name if recycler else None,
+        "recycler_auth_ref": recycler.authorization_ref_no if recycler else None,
+        # Timestamps
+        "created_at": tx.created_at.isoformat() if tx.created_at else "",
+        "updated_at": tx.updated_at.isoformat() if tx.updated_at else "",
+    }
+
 
 @router.get("/{collector_id}")
 def get_collector_ledger(collector_id: str, db: Session = Depends(get_db)):
@@ -28,23 +67,14 @@ def get_collector_ledger(collector_id: str, db: Session = Depends(get_db)):
             items = []
 
             for tx, mat in txs:
-                val = tx.final_sale_value or tx.quoted_price or mat.estimated_value or 0.0
+                recycler = db.query(Recycler).filter(Recycler.recycler_id == tx.recycler_id).first() if tx.recycler_id else None
+                item = _build_item(tx, mat, recycler)
+                val = item["amount"]
                 if tx.payment_status == PaymentStatus.paid or tx.status == TransactionStatus.closed:
                     total_paid += val
                 else:
                     total_pending += val
-
-                items.append({
-                    "lot_id": tx.lot_id,
-                    "collector_id": tx.collector_id,
-                    "material_category": mat.material_category.value if hasattr(mat.material_category, 'value') else str(mat.material_category),
-                    "weight_kg": mat.approx_weight_kg,
-                    "amount": val,
-                    "status": tx.status.value if hasattr(tx.status, 'value') else str(tx.status),
-                    "payment_status": tx.payment_status.value if hasattr(tx.payment_status, 'value') else str(tx.payment_status),
-                    "payment_method": tx.payment_method.value if hasattr(tx.payment_method, 'value') else str(tx.payment_method),
-                    "created_at": tx.created_at.isoformat() if tx.created_at else "",
-                })
+                items.append(item)
 
             return {
                 "collector_id": collector_id,
@@ -74,23 +104,14 @@ def get_collector_ledger(collector_id: str, db: Session = Depends(get_db)):
     items = []
 
     for tx, mat in txs:
-        val = tx.final_sale_value or tx.quoted_price or mat.estimated_value or 0.0
+        recycler = db.query(Recycler).filter(Recycler.recycler_id == tx.recycler_id).first() if tx.recycler_id else None
+        item = _build_item(tx, mat, recycler)
+        val = item["amount"]
         if tx.payment_status == PaymentStatus.paid or tx.status == TransactionStatus.closed:
             total_earned += val
         else:
             total_pending += val
-
-        items.append({
-            "lot_id": tx.lot_id,
-            "collector_id": tx.collector_id,
-            "material_category": mat.material_category.value if hasattr(mat.material_category, 'value') else str(mat.material_category),
-            "weight_kg": mat.approx_weight_kg,
-            "amount": val,
-            "status": tx.status.value if hasattr(tx.status, 'value') else str(tx.status),
-            "payment_status": tx.payment_status.value if hasattr(tx.payment_status, 'value') else str(tx.payment_status),
-            "payment_method": tx.payment_method.value if hasattr(tx.payment_method, 'value') else str(tx.payment_method),
-            "created_at": tx.created_at.isoformat() if tx.created_at else "",
-        })
+        items.append(item)
 
     return {
         "collector_id": collector_id,

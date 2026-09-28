@@ -21,7 +21,7 @@ export const ProfilePage: React.FC = () => {
   const { t, i18n } = useTranslation();
   const isEn = i18n.language === 'en';
 
-  const userRaw = typeof window !== 'undefined' ? localStorage.getItem('kabadiwala_user') : null;
+  const userRaw = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined' ? localStorage.getItem('kabadiwala_user') : null;
   const initialUser = userRaw ? JSON.parse(userRaw) : null;
 
   const [accountType, setAccountType] = useState<'independent' | 'shop' | 'sub_collector' | 'recycler'>(initialUser?.accountType || initialUser?.role || 'independent');
@@ -29,7 +29,7 @@ export const ProfilePage: React.FC = () => {
   const [phone, setPhone] = useState<string>(initialUser?.phone || '');
   const [userRole, setUserRole] = useState<string>(initialUser?.role || 'collector');
   const [locality, setLocality] = useState<string>(initialUser?.district || 'Pune');
-  const [shopCode, setShopCode] = useState<string | null>(initialUser?.shopCode || localStorage.getItem('kabadiwala_shop_code') || null);
+  const [shopCode, setShopCode] = useState<string | null>(initialUser?.shopCode || (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined' ? localStorage.getItem('kabadiwala_shop_code') : null));
   const [mpcbRef, setMpcbRef] = useState<string>(initialUser?.mpcb_ref || initialUser?.authorization_ref_no || '');
   const [authBadgeRef, setAuthBadgeRef] = useState<string>(initialUser?.auth_badge_ref || `AUTH-2024-${(initialUser?.id || 'DEMO').slice(-4)}`);
   const [feriwalas, setFeriwalas] = useState<Feriwala[]>([]);
@@ -136,20 +136,20 @@ export const ProfilePage: React.FC = () => {
   });
 
   return (
-    <div className="pb-24 pt-4 px-4 max-w-md sm:max-w-2xl md:max-w-4xl mx-auto space-y-4 font-sans">
+    <div className="pb-24 pt-4 px-4 sm:px-6 md:px-8 max-w-7xl mx-auto space-y-6 font-sans text-stone-900">
       {/* Header Profile Card */}
-      <div className="bg-surface-card rounded-card p-4 border border-surface-border shadow-soft space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3.5">
-            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-md shrink-0 ${
-              isRecycler ? 'bg-stone-900' : 'bg-brand-500'
+      <div className="bg-white rounded-3xl p-5 sm:p-6 border border-stone-200/80 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center space-x-4">
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-white shadow-md shrink-0 ${
+              isRecycler ? 'bg-stone-900' : 'bg-[#16A34A]'
             }`}>
-              {isRecycler ? <Factory size={28} /> : accountType === 'shop' ? <Store size={28} /> : <User size={28} />}
+              {isRecycler ? <Factory size={32} /> : accountType === 'shop' ? <Store size={32} /> : <User size={32} />}
             </div>
             <div>
-              <h2 className="text-lg font-bold text-stone-900 leading-tight">{displayName}</h2>
+              <h2 className="text-xl sm:text-2xl font-black text-stone-900 leading-tight">{displayName}</h2>
               <div className="flex items-center space-x-2 mt-1">
-                <span className="bg-brand-100 text-brand-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full capitalize">
+                <span className="bg-emerald-100 text-emerald-800 text-xs font-extrabold px-3 py-1 rounded-full capitalize">
                   {isRecycler
                     ? (isEn ? 'MPCB Authorized Recycler' : 'अधिकृत रीसायकलर')
                     : accountType === 'shop'
@@ -165,85 +165,138 @@ export const ProfilePage: React.FC = () => {
           <button
             type="button"
             onClick={handleLogout}
-            className="p-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-bold flex items-center space-x-1 transition-all active:scale-95"
+            className="px-4 py-2.5 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-extrabold flex items-center justify-center space-x-2 transition-all cursor-pointer shadow-xs"
             title="Logout"
           >
             <LogOut size={16} />
-            <span className="hidden sm:inline">{t('profile.logout')}</span>
+            <span>{t('profile.logout')}</span>
           </button>
         </div>
 
         {/* Profile info row */}
-        <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-stone-100">
-          <div className="flex items-center space-x-1.5 text-stone-600">
-            <Phone size={14} className="text-brand-600 shrink-0" />
-            <span className="font-semibold">{phone}</span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-3 border-t border-stone-100">
+          <div className="flex items-center space-x-2 text-stone-600 bg-stone-50 p-3 rounded-2xl border border-stone-200/60">
+            <Phone size={16} className="text-[#16A34A] shrink-0" />
+            <span className="font-bold text-stone-900">{phone || '+91 98765 43210'}</span>
           </div>
-          <div className="flex items-center space-x-1.5 text-stone-600">
-            <MapPin size={14} className="text-brand-600 shrink-0" />
-            <span className="font-semibold">{locality}</span>
+          <div className="flex items-center space-x-2 text-stone-600 bg-stone-50 p-3 rounded-2xl border border-stone-200/60">
+            <MapPin size={16} className="text-[#16A34A] shrink-0" />
+            <span className="font-bold text-stone-900">{locality}</span>
           </div>
         </div>
       </div>
 
       {/* Collector Activity Stats — only shown for collector accounts */}
       {!isRecycler && (
-        <div className="grid grid-cols-3 gap-2">
-          <div className="bg-surface-card rounded-xl p-3 border border-surface-border shadow-soft text-center">
-            <div className="flex justify-center mb-1"><Package size={16} className="text-brand-600" /></div>
-            <div className="text-xl font-black text-stone-900">{myMaterials.length}</div>
-            <div className="text-[10px] font-bold text-stone-500 uppercase tracking-wide">{isEn ? 'Lots' : 'लॉट'}</div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-white rounded-3xl p-4 border border-stone-200/80 shadow-xs text-center space-y-1">
+            <div className="flex justify-center mb-1"><Package size={20} className="text-[#16A34A]" /></div>
+            <div className="text-2xl font-black text-stone-900">{myMaterials.length}</div>
+            <div className="text-xs font-extrabold text-stone-500 uppercase tracking-wide">{isEn ? 'Lots' : 'लॉट'}</div>
           </div>
-          <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-200 shadow-soft text-center">
-            <div className="flex justify-center mb-1"><TrendingUp size={16} className="text-emerald-600" /></div>
-            <div className="text-xl font-black text-emerald-800">₹{statsEarned.toLocaleString('en-IN')}</div>
-            <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wide">{isEn ? 'Earned' : 'कमाई'}</div>
+          <div className="bg-emerald-50/80 rounded-3xl p-4 border border-emerald-200/80 shadow-xs text-center space-y-1">
+            <div className="flex justify-center mb-1"><TrendingUp size={20} className="text-[#16A34A]" /></div>
+            <div className="text-2xl font-black text-emerald-900">₹{statsEarned.toLocaleString('en-IN')}</div>
+            <div className="text-xs font-extrabold text-emerald-700 uppercase tracking-wide">{isEn ? 'Earned' : 'कमाई'}</div>
           </div>
-          <div className="bg-amber-50 rounded-xl p-3 border border-amber-200 shadow-soft text-center">
-            <div className="flex justify-center mb-1"><Clock size={16} className="text-amber-600" /></div>
-            <div className="text-xl font-black text-amber-800">₹{statsPending.toLocaleString('en-IN')}</div>
-            <div className="text-[10px] font-bold text-amber-700 uppercase tracking-wide">{isEn ? 'Pending' : 'बाकी'}</div>
+          <div className="bg-amber-50/80 rounded-3xl p-4 border border-amber-200/80 shadow-xs text-center space-y-1">
+            <div className="flex justify-center mb-1"><Clock size={20} className="text-amber-600" /></div>
+            <div className="text-2xl font-black text-amber-900">₹{statsPending.toLocaleString('en-IN')}</div>
+            <div className="text-xs font-extrabold text-amber-700 uppercase tracking-wide">{isEn ? 'Pending' : 'बाकी'}</div>
           </div>
         </div>
       )}
 
       {/* Recycler Facility Specific Section */}
       {isRecycler ? (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* MPCB License Badge Card */}
-          <div className="bg-stone-900 text-white rounded-card p-4 shadow-soft space-y-3 border border-stone-800">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500 text-stone-900 flex items-center justify-center shadow-xs shrink-0 font-bold">
-                  <ShieldCheck size={24} />
+          <div className="bg-stone-900 text-white rounded-3xl p-6 shadow-xl space-y-4 border border-stone-800 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-stone-950 flex items-center justify-center shadow-md shrink-0 font-bold">
+                    <ShieldCheck size={28} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider">
+                      {isEn ? 'MPCB License Authorization' : 'MPCB परवाना प्रमाण'}
+                    </span>
+                    <h4 className="font-extrabold text-white text-base leading-tight">
+                      {isEn ? 'Authorized E-Waste Processing Facility' : 'अधिकृत ई-कचरा रीसायकलिंग सेंटर'}
+                    </h4>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-[10px] font-extrabold uppercase text-emerald-400 tracking-wider">
-                    {isEn ? 'MPCB License Authorization' : 'MPCB परवाना प्रमाण'}
-                  </span>
-                  <h4 className="font-bold text-white text-sm leading-tight">
-                    {isEn ? 'Authorized E-Waste Processing Facility' : 'अधिकृत ई-कचरा रीसायकलिंग सेंटर'}
-                  </h4>
+                <span className="bg-emerald-500 text-stone-950 text-xs font-black px-3 py-1 rounded-full shrink-0">
+                  VERIFIED ✓
+                </span>
+              </div>
+
+              <div className="bg-stone-800/90 rounded-2xl p-4 text-xs text-stone-300 space-y-2 font-mono">
+                <div className="flex justify-between border-b border-stone-700 pb-1">
+                  <span className="text-stone-400">{isEn ? 'MPCB Ref No:' : 'परवाना क्रमांक:'}</span>
+                  <strong className="text-emerald-400">{mpcbRef || 'BO/MPCB/RO-PUNE/2024'}</strong>
+                </div>
+                <div className="flex justify-between pt-0.5">
+                  <span className="text-stone-400">{isEn ? 'District Hub:' : 'कार्यक्षेत्र:'}</span>
+                  <strong className="text-white">{locality}</strong>
                 </div>
               </div>
-              <span className="bg-emerald-500 text-stone-950 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full">
-                VERIFIED ✓
-              </span>
-            </div>
-
-            <div className="bg-stone-800/80 rounded-xl p-3 text-xs text-stone-300 space-y-1 font-mono">
-              <div><span className="text-stone-400">{isEn ? 'Ref No:' : 'परवाना क्रमांक:'}</span> <strong>{mpcbRef}</strong></div>
-              <div><span className="text-stone-400">{isEn ? 'District Hub:' : 'कार्यक्षेत्र:'}</span> <strong>{locality}</strong></div>
             </div>
 
             <NavLink
               to="/recycler/rates"
-              className="w-full bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center space-x-1.5 shadow-sm transition-all"
+              className="w-full bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold py-3 px-4 rounded-2xl text-xs flex items-center justify-center space-x-2 shadow-md transition-all cursor-pointer"
             >
-              <Tag size={15} />
-              <span>{isEn ? 'Manage Buying Rates' : 'खरेदी दर व्यवस्थापित करा'}</span>
+              <Tag size={16} />
+              <span>{isEn ? 'Manage Buying Rates & Rates Board' : 'खरेदी दर व्यवस्थापित करा'}</span>
               <ArrowRight size={14} />
             </NavLink>
+          </div>
+
+          {/* Quick Operations Actions Panel */}
+          <div className="bg-white rounded-3xl p-6 border border-stone-200/80 shadow-xs space-y-4 flex flex-col justify-between">
+            <div>
+              <h3 className="font-black text-stone-900 text-base flex items-center space-x-2 mb-3">
+                <Factory size={20} className="text-[#16A34A]" />
+                <span>Facility Quick Operations</span>
+              </h3>
+
+              <div className="space-y-2.5">
+                <NavLink
+                  to="/recycler"
+                  className="flex items-center justify-between p-3.5 rounded-2xl bg-stone-50 border border-stone-200/60 hover:border-emerald-300 text-stone-900 font-extrabold text-xs transition-all cursor-pointer"
+                >
+                  <span className="flex items-center space-x-2">
+                    <Package size={16} className="text-[#16A34A]" />
+                    <span>View Incoming E-Waste Queue</span>
+                  </span>
+                  <ArrowRight size={14} className="text-stone-400" />
+                </NavLink>
+
+                <NavLink
+                  to="/admin/anomalies"
+                  className="flex items-center justify-between p-3.5 rounded-2xl bg-rose-50/80 border border-rose-200/60 hover:border-rose-300 text-rose-900 font-extrabold text-xs transition-all cursor-pointer"
+                >
+                  <span className="flex items-center space-x-2">
+                    <ShieldCheck size={16} className="text-rose-600" />
+                    <span>MAD Z-Score Anomaly Engine</span>
+                  </span>
+                  <ArrowRight size={14} className="text-rose-400" />
+                </NavLink>
+
+                <NavLink
+                  to="/minerals"
+                  className="flex items-center justify-between p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/60 hover:border-amber-300 text-amber-900 font-extrabold text-xs transition-all cursor-pointer"
+                >
+                  <span className="flex items-center space-x-2">
+                    <TrendingUp size={16} className="text-amber-600" />
+                    <span>JNARDDC Critical Minerals Recovery</span>
+                  </span>
+                  <ArrowRight size={14} className="text-amber-400" />
+                </NavLink>
+              </div>
+            </div>
           </div>
         </div>
       ) : (

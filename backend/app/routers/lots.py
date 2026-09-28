@@ -13,7 +13,7 @@ router = APIRouter(prefix="/lots", tags=["lots"])
 
 # Valid state machine transitions per 03-technical-architecture.md §4
 VALID_TRANSITIONS = {
-    TransactionStatus.draft: [TransactionStatus.quoted, TransactionStatus.draft],
+    TransactionStatus.draft: [TransactionStatus.quoted, TransactionStatus.draft, TransactionStatus.matched],
     TransactionStatus.quoted: [TransactionStatus.matched, TransactionStatus.draft],
     TransactionStatus.matched: [TransactionStatus.handed_over, TransactionStatus.draft],
     TransactionStatus.handed_over: [TransactionStatus.confirmed],
@@ -111,3 +111,50 @@ def transition_lot_state(
     db.commit()
     db.refresh(tx)
     return tx
+
+
+@router.get("/{lot_id}/events", tags=["traceability"])
+def get_lot_traceability_events(lot_id: str, db: Session = Depends(get_db)):
+    """Return the full chain-of-custody audit trail for a lot — every event in chronological order."""
+    material = db.query(Material).filter(Material.lot_id == lot_id).first()
+    if not material:
+        raise HTTPException(status_code=404, detail="Lot not found")
+
+    events = (
+        db.query(TraceabilityEvent)
+        .filter(TraceabilityEvent.lot_id == lot_id)
+        .order_by(TraceabilityEvent.timestamp.asc())
+        .all()
+    )
+
+    tx = db.query(Transaction).filter(Transaction.lot_id == lot_id).first()
+
+    from app.models.recycler import Recycler
+    recycler = db.query(Recycler).filter(Recycler.recycler_id == tx.recycler_id).first() if tx and tx.recycler_id else None
+
+    return {
+        "lot_id": lot_id,
+        "material_category": material.material_category.value,
+        "sub_category": material.sub_category,
+        "description": material.description,
+        "image_ref": material.image_ref,
+        "approx_weight_kg": material.approx_weight_kg,
+        "current_status": tx.status.value if tx else "unknown",
+        "recycler_name": recycler.name if recycler else None,
+        "recycler_auth_ref": recycler.authorization_ref_no if recycler else None,
+        "events": [
+            {
+                "event_id": e.event_id,
+                "event_type": e.event_type.value,
+                "actor": e.actor.value,
+                "timestamp": e.timestamp.isoformat() if e.timestamp else None,
+                "gps_lat": e.gps_lat,
+                "gps_lng": e.gps_lng,
+                "photo_ref": e.photo_ref,
+                "handover_reference_no": e.handover_reference_no,
+                "recycler_confirmation": e.recycler_confirmation,
+                "notes": e.notes,
+            }
+            for e in events
+        ],
+    }
