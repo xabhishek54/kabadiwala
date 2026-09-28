@@ -5,7 +5,7 @@ import { fetchRecyclerMatches, fetchRegisteredRecyclers, matchLotWithRecycler } 
 import {
   Search, MapPin, Star, ArrowLeft,
   Truck, Zap, ChevronDown, ChevronUp, Phone, Factory,
-  ShieldCheck, Calendar, Building, X, Check
+  ShieldCheck, Calendar, Building, X, Check, AlertTriangle
 } from 'lucide-react';
 
 interface RecyclerDisplay {
@@ -107,6 +107,8 @@ export const RecyclerMatchPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'All' | 'Verified' | 'Pickup Available'>('All');
   const [expandedRecyclerId, setExpandedRecyclerId] = useState<string | null>(null);
+  // true only when a real lot exists to match against
+  const [hasValidLot, setHasValidLot] = useState<boolean>(false);
 
   const district = (typeof window !== 'undefined' && localStorage.getItem('kabadiwala_district')) || 'Pune';
 
@@ -115,6 +117,7 @@ export const RecyclerMatchPage: React.FC = () => {
       setLoading(true);
       let category = 'PCB';
       let weight = 2.5;
+      let lotFound = false;
 
       if (lotId) {
         const mat = await db.materials.get(lotId);
@@ -122,8 +125,10 @@ export const RecyclerMatchPage: React.FC = () => {
           setMaterial(mat);
           category = mat.material_category || 'PCB';
           weight = mat.approx_weight_kg || 2.5;
+          lotFound = true;
         }
       }
+      setHasValidLot(lotFound);
 
       const collectorLat = parseFloat(localStorage.getItem('kabadiwala_collector_lat') || '18.5204');
       const collectorLng = parseFloat(localStorage.getItem('kabadiwala_collector_lng') || '73.8567');
@@ -335,6 +340,20 @@ export const RecyclerMatchPage: React.FC = () => {
   return (
     <div className="pb-24 pt-4 px-4 sm:px-6 md:px-8 max-w-7xl mx-auto space-y-4 font-sans text-stone-900">
       
+      {/* No-lot warning banner */}
+      {!loading && !hasValidLot && (
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex items-start gap-3">
+          <AlertTriangle size={20} className="text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-extrabold text-amber-900">No product selected</p>
+            <p className="text-xs text-amber-800 mt-0.5">
+              You need to create a lot first before matching with a recycler.
+              Go to <strong>Add Lots</strong> → upload a photo → complete the lot, then come back here.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Top Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white rounded-3xl p-4 sm:p-5 border border-stone-200/80 shadow-xs">
         <div className="flex items-center gap-3">
@@ -495,7 +514,9 @@ export const RecyclerMatchPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleSelectRecycler(rec)}
-                    className="bg-[#16A34A] hover:bg-emerald-700 text-white font-bold text-xs px-4 py-1.5 rounded-xl shadow-xs transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                    disabled={!hasValidLot}
+                    title={!hasValidLot ? 'Create a lot first to match with a recycler' : undefined}
+                    className="bg-[#16A34A] hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs px-4 py-1.5 rounded-xl shadow-xs transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
                   >
                     <span>Select</span>
                     <Zap size={12} />

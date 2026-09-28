@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { ShieldCheck, ShieldAlert, Search, Package, Award, UserCheck, Factory, QrCode, X, BookOpen } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Search, Package, Award, UserCheck, Factory, QrCode, X, BookOpen, AlertTriangle } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { API_BASE_URL } from '../../data/remote/apiClient';
 
@@ -64,13 +64,18 @@ export const VerifyPage: React.FC = () => {
     }
   }, [urlIdentifier]);
 
-  const startScanner = async () => {
-    setShowScanner(true);
-    setTimeout(async () => {
+  // Start camera QR scanner — use useEffect so the #qr-reader div is guaranteed in DOM
+  const openScanner = () => setShowScanner(true);
+
+  useEffect(() => {
+    if (!showScanner) return;
+    let scanner: Html5Qrcode | null = null;
+    // rAF ensures the modal has painted before we touch the DOM node
+    const raf = requestAnimationFrame(async () => {
       try {
-        const html5QrCode = new Html5Qrcode('qr-reader');
-        scannerRef.current = html5QrCode;
-        await html5QrCode.start(
+        scanner = new Html5Qrcode('qr-reader');
+        scannerRef.current = scanner;
+        await scanner.start(
           { facingMode: 'environment' },
           { fps: 10, qrbox: { width: 220, height: 220 } },
           (decodedText) => {
@@ -82,9 +87,15 @@ export const VerifyPage: React.FC = () => {
         );
       } catch (err) {
         console.warn('QR camera start error:', err);
+        // Camera permission denied or not available — close scanner gracefully
+        setShowScanner(false);
       }
-    }, 200);
-  };
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showScanner]);
 
   const stopScanner = async () => {
     if (scannerRef.current) {
@@ -123,7 +134,7 @@ export const VerifyPage: React.FC = () => {
 
         <button
           type="button"
-          onClick={startScanner}
+          onClick={openScanner}
           className="w-full sm:w-auto bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold px-4 py-2.5 rounded-2xl flex items-center justify-center space-x-2 shadow-xs transition-all text-xs cursor-pointer shrink-0"
         >
           <QrCode size={16} />

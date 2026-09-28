@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import {
   User, Store, Users, ShieldCheck, Phone, MapPin, QrCode,
-  Award, ArrowRight, LogOut, Copy, CheckCheck, Loader2, RefreshCw, Factory, Tag, TrendingUp, Clock, Package
+  Award, ArrowRight, LogOut, Copy, CheckCheck, Loader2, RefreshCw, Factory, Tag, TrendingUp, Clock, Package, Download
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { QRCodeSVG } from 'qrcode.react';
 import { db } from '../../data/local/db';
 import { fetchShopFeriwalas, fetchCollectorAuthorizations } from '../../data/remote/apiClient';
 
@@ -303,34 +304,93 @@ export const ProfilePage: React.FC = () => {
         /* Collector Specific Section */
         <>
           {/* Digital Authorization Badge */}
-          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-card p-4 shadow-soft space-y-2.5">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0">
-                  <Award size={22} />
+          {accountType === 'independent' ? (
+            /* ── Independent Collector: QR-based Collection Agent Badge ── */
+            <div className="bg-stone-900 text-white rounded-3xl p-5 space-y-4 border border-stone-800 shadow-xl">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-11 h-11 rounded-2xl bg-emerald-500 text-stone-950 flex items-center justify-center shadow-md shrink-0">
+                    <Award size={24} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider">
+                      {isEn ? 'Collection Agent Badge' : 'संग्राहक बॅज'}
+                    </span>
+                    <h4 className="font-extrabold text-white text-sm leading-tight">
+                      {isEn ? 'Authorized Independent Collector' : 'अधिकृत स्वतंत्र कबाडीवाला'}
+                    </h4>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-[10px] font-extrabold uppercase text-emerald-800 tracking-wider">Official License Badge</span>
-                  <h4 className="font-bold text-stone-900 text-sm leading-tight">Authorized Collection Agent</h4>
+                <span className="bg-emerald-500 text-stone-950 text-[10px] font-black px-2.5 py-1 rounded-full shrink-0">ACTIVE ✓</span>
+              </div>
+
+              {/* QR Code */}
+              <div className="flex flex-col items-center gap-3 bg-white rounded-2xl p-4">
+                <QRCodeSVG
+                  value={`kabadiwala://verify/${authBadgeRef}`}
+                  size={140}
+                  bgColor="#ffffff"
+                  fgColor="#1c1917"
+                  level="M"
+                  includeMargin={false}
+                />
+                <div className="text-center">
+                  <div className="text-[9px] font-black text-stone-400 uppercase tracking-widest">Scan to Verify Agent</div>
+                  <div className="font-mono text-xs font-black text-stone-900 mt-0.5">{authBadgeRef}</div>
                 </div>
               </div>
-              <span className="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">ACTIVE ✓</span>
+
+              <div className="bg-stone-800/80 rounded-2xl p-3 text-xs text-stone-300 space-y-1.5 font-mono">
+                <div className="flex justify-between border-b border-stone-700 pb-1.5">
+                  <span className="text-stone-400">{isEn ? 'Badge Ref:' : 'बॅज क्रमांक:'}</span>
+                  <strong className="text-emerald-400">{authBadgeRef}</strong>
+                </div>
+                <div className="flex justify-between pt-0.5">
+                  <span className="text-stone-400">{isEn ? 'Operating Area:' : 'कार्यक्षेत्र:'}</span>
+                  <strong className="text-white">{locality}</strong>
+                </div>
+              </div>
+
+              <NavLink
+                to={`/verify/${encodeURIComponent(authBadgeRef)}`}
+                className="w-full bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold py-2.5 px-3 rounded-2xl text-xs flex items-center justify-center space-x-1.5 shadow-md transition-all"
+              >
+                <ShieldCheck size={16} />
+                <span>{isEn ? 'Verify My Agent Badge' : 'माझे बॅज सत्यापित करा'}</span>
+                <ArrowRight size={14} />
+              </NavLink>
             </div>
+          ) : (
+            /* ── Shop / Feriwala: standard auth badge ── */
+            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-card p-4 shadow-soft space-y-2.5">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                    <Award size={22} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-extrabold uppercase text-emerald-800 tracking-wider">Official License Badge</span>
+                    <h4 className="font-bold text-stone-900 text-sm leading-tight">Authorized Collection Agent</h4>
+                  </div>
+                </div>
+                <span className="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">ACTIVE ✓</span>
+              </div>
 
-            <p className="text-xs text-stone-700 font-medium">
-              Issued by: <strong className="text-stone-900">EcoRecycle India (MPCB Verified)</strong><br />
-              Ref No: <span className="font-mono text-stone-900 font-bold">{authBadgeRef}</span>
-            </p>
+              <p className="text-xs text-stone-700 font-medium">
+                Issued by: <strong className="text-stone-900">EcoRecycle India (MPCB Verified)</strong><br />
+                Ref No: <span className="font-mono text-stone-900 font-bold">{authBadgeRef}</span>
+              </p>
 
-            <NavLink
-              to={`/verify/${encodeURIComponent(authBadgeRef)}`}
-              className="tap-target w-full bg-white border border-emerald-300 hover:border-emerald-500 text-emerald-800 font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center space-x-1.5 shadow-xs"
-            >
-              <ShieldCheck size={16} className="text-emerald-600" />
-              <span>Verify Digital Authorization Badge</span>
-              <ArrowRight size={14} />
-            </NavLink>
-          </div>
+              <NavLink
+                to={`/verify/${encodeURIComponent(authBadgeRef)}`}
+                className="tap-target w-full bg-white border border-emerald-300 hover:border-emerald-500 text-emerald-800 font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center space-x-1.5 shadow-xs"
+              >
+                <ShieldCheck size={16} className="text-emerald-600" />
+                <span>Verify Digital Authorization Badge</span>
+                <ArrowRight size={14} />
+              </NavLink>
+            </div>
+          )}
 
           {/* Shop Owner: QR / Shop Code Panel */}
           {accountType === 'shop' && shopCode && (

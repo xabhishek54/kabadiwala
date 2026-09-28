@@ -482,7 +482,6 @@ export const LotCreationPage: React.FC = () => {
                   type="file"
                   accept="image/*"
                   multiple
-                  capture="environment"
                   onChange={handlePhotosSelected}
                   className="hidden"
                 />
