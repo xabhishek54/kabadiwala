@@ -1,5 +1,3 @@
-const isNativeApp = typeof window !== 'undefined' && ((window as any).Capacitor?.isNativePlatform() || (window as any).Capacitor?.platform === 'android');
-
 const getApiBaseUrl = () => {
   if (import.meta.env.VITE_API_BASE_URL) {
     return import.meta.env.VITE_API_BASE_URL;
@@ -143,7 +141,10 @@ export async function confirmHandover(
     if (response.ok) {
       return response.json();
     }
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.detail || `Handover rejected (${response.status})`);
   } catch (e) {
+    if (e instanceof Error && e.message.startsWith('Handover rejected')) throw e;
     console.warn('API handover confirmation offline, updating local IndexedDB');
   }
   return { status: 'confirmed' };
@@ -368,6 +369,8 @@ export interface LoginResponse {
   account_type?: string;
   shop_code?: string;
   district?: string;
+  access_token?: string;
+  token_type?: string;
 }
 
 /** Attempt login by phone + role. Returns user data if found, throws if not found. */
@@ -387,18 +390,8 @@ export async function loginUser(phone: string, role: 'collector' | 'recycler'): 
     }
     throw new Error(err.detail || `Login failed (${response.status})`);
   } catch (err: any) {
-    if (err.message && err.message.includes('No account found')) {
-      throw err;
-    }
-    console.warn('Backend API unreachable, logging in via local offline profile fallback:', err);
-    return {
-      user_id: `col-off-${phone.slice(-4)}`,
-      phone_number: phone,
-      name: role === 'recycler' ? 'Eco Recycler (Offline)' : 'Informal Collector (Offline)',
-      role: role,
-      account_type: 'independent',
-      district: 'Pune',
-    };
+    if (err instanceof Error && err.message) throw err;
+    throw new Error('Unable to reach the sign-in server. Please try again when online.');
   }
 }
 

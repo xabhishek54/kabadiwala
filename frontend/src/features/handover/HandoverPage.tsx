@@ -30,6 +30,7 @@ export const HandoverPage: React.FC = () => {
   const [isGettingGps, setIsGettingGps] = useState<boolean>(false);
   const [finalValueInput, setFinalValueInput] = useState<string>('');
   const [trailEvents, setTrailEvents] = useState<any[]>([]);
+  const [confirmationError, setConfirmationError] = useState<string>('');
 
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const [showScanner, setShowScanner] = useState<boolean>(false);
@@ -229,6 +230,7 @@ export const HandoverPage: React.FC = () => {
 
   const handleConfirmHandover = async () => {
     if (!lotId || !codeMatches) return;
+    setConfirmationError('');
     const finalVal = parseFloat(finalValueInput) || transaction?.quoted_price || material?.estimated_value || 0;
     const activeRecyclerId = transaction?.recycler_id || currentUser?.recycler_id || currentUser?.recyclerId || currentUser?.id || 'rec-pune-001';
 
@@ -242,14 +244,19 @@ export const HandoverPage: React.FC = () => {
       }
     }
 
-    await confirmHandover(
-      lotId,
-      activeRecyclerId,
-      inputShortCode.trim(),
-      gpsLocation?.lat,
-      gpsLocation?.lng,
-      finalVal
-    );
+    try {
+      await confirmHandover(
+        lotId,
+        activeRecyclerId,
+        inputShortCode.trim(),
+        gpsLocation?.lat,
+        gpsLocation?.lng,
+        finalVal
+      );
+    } catch (error) {
+      setConfirmationError(error instanceof Error ? error.message : 'Handover could not be confirmed');
+      return;
+    }
 
     // Update local IndexedDB transaction status
     await db.transactions.update(lotId, {
@@ -457,6 +464,9 @@ export const HandoverPage: React.FC = () => {
               <p className="text-[11px] font-bold text-rose-600 text-center">
                 ❌ Code does not match. Ask collector to show their code again.
               </p>
+            )}
+            {confirmationError && (
+              <p className="text-[11px] font-bold text-rose-600 text-center">{confirmationError}</p>
             )}
           </div>
 

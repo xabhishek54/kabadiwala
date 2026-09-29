@@ -8,9 +8,10 @@ export const NotificationBell: React.FC = () => {
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
 
-  const userStr = typeof window !== 'undefined' ? localStorage.getItem('kabadiwala_user') : null;
+  const storage = typeof window !== 'undefined' ? window.localStorage : null;
+  const userStr = storage?.getItem('kabadiwala_user') || null;
   const userObj = userStr ? JSON.parse(userStr) : null;
-  const currentUserId = userObj?.recycler_id || userObj?.id || localStorage.getItem('kabadiwala_collector_id') || 'col-demo-101';
+  const currentUserId = userObj?.recycler_id || userObj?.id || storage?.getItem('kabadiwala_collector_id') || 'col-demo-101';
 
   // Live query for notifications targeting this user or global fallback
   const notifications = useLiveQuery(

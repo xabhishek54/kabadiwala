@@ -284,6 +284,11 @@ export const LotCreationPage: React.FC = () => {
     );
   };
 
+  const adjustWeight = (id: string, currentWeight: number, change: number) => {
+    const nextWeight = Math.max(0.1, Math.round((currentWeight + change) * 10) / 10);
+    updateItem(id, { weightKg: nextWeight });
+  };
+
   const deleteItem = (id: string) => {
     setItems(prev => prev.filter(it => it.id !== id));
   };
@@ -639,50 +644,38 @@ export const LotCreationPage: React.FC = () => {
                     </div>
                   </button>
 
+                  {/* Compact per-item controls */}
+                  <div className="px-3 pb-3 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-1.5 items-center">
+                    <label className="relative min-w-0">
+                      <span className="sr-only">Category</span>
+                      <select
+                        value={item.categoryId}
+                        onChange={e => updateItem(item.id, { categoryId: e.target.value })}
+                        className="w-full appearance-none bg-stone-50 border border-stone-200 rounded-lg px-2 py-2 text-[10px] font-bold text-stone-800 focus:outline-none focus:ring-1 focus:ring-[#16A34A] truncate"
+                      >
+                        {CATEGORY_GROUPS.map(group => <option key={group.id} value={group.id}>{group.icon} {group.name.split(' ')[0]}</option>)}
+                      </select>
+                    </label>
+                    <label className="relative min-w-0">
+                      <span className="sr-only">Sub-category</span>
+                      <select
+                        value={item.subCategoryId}
+                        onChange={e => updateItem(item.id, { subCategoryId: e.target.value })}
+                        className="w-full appearance-none bg-stone-50 border border-stone-200 rounded-lg px-2 py-2 text-[10px] font-bold text-stone-800 focus:outline-none focus:ring-1 focus:ring-[#16A34A] truncate"
+                      >
+                        {grp.subCategories.map(subCategory => <option key={subCategory.id} value={subCategory.id}>{subCategory.name}</option>)}
+                      </select>
+                    </label>
+                    <div className="flex items-center rounded-lg border border-stone-200 bg-stone-50 overflow-hidden shrink-0">
+                      <button type="button" onClick={() => adjustWeight(item.id, item.weightKg, -0.5)} className="w-7 h-8 text-sm font-black text-stone-600 hover:bg-stone-200 cursor-pointer" aria-label={`Decrease ${sub.name} weight`}>−</button>
+                      <span className="min-w-12 text-center text-[10px] font-black text-stone-900">{item.weightKg} kg</span>
+                      <button type="button" onClick={() => adjustWeight(item.id, item.weightKg, 0.5)} className="w-7 h-8 text-sm font-black text-stone-600 hover:bg-stone-200 cursor-pointer" aria-label={`Increase ${sub.name} weight`}>+</button>
+                    </div>
+                  </div>
+
                   {/* ─── Expanded Edit Panel ─── */}
                   {isExpanded && (
                     <div className="px-3 pb-3 space-y-3 border-t border-stone-100 pt-3 bg-stone-50">
-
-                      {/* Category selector */}
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-extrabold text-stone-600 uppercase">Category</label>
-                        <div className="grid grid-cols-4 gap-1.5">
-                          {CATEGORY_GROUPS.map(g => (
-                            <button
-                              key={g.id}
-                              type="button"
-                              onClick={() => updateItem(item.id, { categoryId: g.id })}
-                              className={`p-2 rounded-xl text-center transition-all border text-xs ${
-                                item.categoryId === g.id
-                                  ? 'bg-stone-900 text-white border-stone-900'
-                                  : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-100'
-                              }`}
-                            >
-                              <div className="text-base leading-none">{g.icon}</div>
-                              <div className="text-[9px] font-bold mt-0.5 truncate">{g.name.split(' ')[0]}</div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Sub-category dropdown */}
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-extrabold text-stone-600 uppercase">Sub-Category</label>
-                        <div className="relative">
-                          <select
-                            value={item.subCategoryId}
-                            onChange={e => updateItem(item.id, { subCategoryId: e.target.value })}
-                            className="w-full appearance-none bg-white border border-stone-200 rounded-xl px-3 py-2.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#16A34A] pr-8"
-                          >
-                            {grp.subCategories.map(s => (
-                              <option key={s.id} value={s.id}>
-                                {s.name} — ₹{s.basePricePerKg}/kg
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronDown size={14} className="absolute right-2.5 top-3 text-stone-400 pointer-events-none" />
-                        </div>
-                      </div>
 
                       {/* Condition chips */}
                       <div className="space-y-1.5">

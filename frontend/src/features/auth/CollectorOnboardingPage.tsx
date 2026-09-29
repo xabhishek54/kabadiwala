@@ -4,7 +4,7 @@ import {
   MapPin, User, Store, Users, QrCode, ArrowRight, CheckCircle2,
   Camera, ShieldCheck, Loader2, AlertCircle, Copy, CheckCheck,
 } from 'lucide-react';
-import { signupCollector, linkFeriwalaToShop } from '../../data/remote/apiClient';
+import { signupCollector, linkFeriwalaToShop, loginUser } from '../../data/remote/apiClient';
 import { LocationPickerModal } from '../../components/LocationPickerModal';
 
 export const CollectorOnboardingPage: React.FC = () => {
@@ -63,6 +63,9 @@ export const CollectorOnboardingPage: React.FC = () => {
         operating_locality: district,
         account_type: accountType,
       });
+
+      const session = await loginUser(user.phone, 'collector').catch(() => null);
+      if (session?.access_token) localStorage.setItem('kabadiwala_access_token', session.access_token);
 
       setAssignedCollectorId(result.collector_id);
       if (result.shop_code) setAssignedShopCode(result.shop_code);

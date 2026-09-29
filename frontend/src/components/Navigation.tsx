@@ -6,44 +6,8 @@ import {
   WifiOff, Factory, Tag, BookOpen, Search, ChevronDown, Leaf
 } from 'lucide-react';
 
-/* ─── Sidebar nav item data matching reference image ─── */
-const collectorNavItems = [
-  { to: '/home', label: 'Home', icon: Home, end: true },
-  { to: '/lots', label: 'My Lots', icon: Package },
-  { to: '/prices', label: 'Price Board', icon: IndianRupee },
-  { to: '/recyclers', label: 'Find Recyclers', icon: Search },
-  { to: '/ledger', label: 'Earnings & Payments', icon: IndianRupee },
-  { to: '/safety', label: 'Safety Guide', icon: ShieldAlert },
-  { to: '/profile', label: 'My Profile', icon: User },
-];
-
-const recyclerNavItems = [
-  { to: '/recycler', label: 'Facility Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/recycler/rates', label: 'My Buying Rates', icon: Tag },
-  { to: '/admin/anomalies', label: 'Anomaly Engine', icon: ShieldAlert },
-  { to: '/minerals', label: 'Minerals Recovery', icon: Factory },
-  { to: '/verify', label: 'Verify Traceability', icon: BookOpen },
-  { to: '/profile', label: 'Facility Profile', icon: User },
-];
-
-/* Bottom nav tabs for collector */
-const collectorBottomTabs = [
-  { to: '/home', label: 'Home', icon: Home, end: true },
-  { to: '/lots', label: 'Lots', icon: Package },
-  { to: '/recyclers', label: 'Recyclers', icon: MapPin },
-  { to: '/profile', label: 'Profile', icon: User },
-];
-
-/* Bottom nav tabs for recycler */
-const recyclerBottomTabs = [
-  { to: '/recycler', label: 'Dashboard', icon: Factory, end: true },
-  { to: '/recycler/rates', label: 'Rates', icon: Tag },
-  { to: '/admin/anomalies', label: 'Alerts', icon: ShieldAlert },
-  { to: '/profile', label: 'Profile', icon: User },
-];
-
 export const Navigation: React.FC = () => {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [user, setUser] = useState<{ name: string; role: string; id?: string } | null>(null);
 
@@ -72,14 +36,46 @@ export const Navigation: React.FC = () => {
   };
 
   const isRecycler = user?.role === 'recycler';
+
+  const collectorNavItems = [
+    { to: '/home', label: t('nav.home'), icon: Home, end: true },
+    { to: '/lots', label: t('nav.lots'), icon: Package },
+    { to: '/prices', label: t('nav.prices'), icon: IndianRupee },
+    { to: '/recyclers', label: t('nav.recyclers'), icon: Search },
+    { to: '/ledger', label: t('nav.ledger'), icon: IndianRupee },
+    { to: '/safety', label: t('nav.safety'), icon: ShieldAlert },
+    { to: '/profile', label: t('nav.profile'), icon: User },
+  ];
+
+  const recyclerNavItems = [
+    { to: '/recycler', label: t('nav.dashboard'), icon: LayoutDashboard, end: true },
+    { to: '/recycler/rates', label: t('nav.buyingRates'), icon: Tag },
+    { to: '/admin/anomalies', label: t('nav.safetyAlerts'), icon: ShieldAlert },
+    { to: '/minerals', label: t('nav.mineralRecovery'), icon: Factory },
+    { to: '/verify', label: t('nav.traceability'), icon: BookOpen },
+    { to: '/profile', label: t('nav.facilityProfile'), icon: User },
+  ];
+
+  const collectorBottomTabs = [
+    { to: '/home', label: t('nav.home'), icon: Home, end: true },
+    { to: '/lots', label: t('nav.lots'), icon: Package },
+    { to: '/recyclers', label: t('nav.recyclers'), icon: MapPin },
+    { to: '/profile', label: t('nav.profile'), icon: User },
+  ];
+
+  const recyclerBottomTabs = [
+    { to: '/recycler', label: t('nav.dashboard'), icon: Factory, end: true },
+    { to: '/recycler/queue', label: t('nav.incomingWaste'), icon: Package },
+    { to: '/admin/anomalies', label: t('nav.safetyAlerts'), icon: ShieldAlert },
+    { to: '/profile', label: t('nav.profile'), icon: User },
+  ];
+
   const navItems = isRecycler ? recyclerNavItems : collectorNavItems;
   const bottomTabs = isRecycler ? recyclerBottomTabs : collectorBottomTabs;
 
   return (
     <>
-      {/* ═══════════════════════════════════════════
-          DESKTOP SIDEBAR (matches reference image)
-      ═══════════════════════════════════════════ */}
+      {/* DESKTOP SIDEBAR */}
       <aside className="sidebar">
         <div>
           {/* Logo Section */}
@@ -123,7 +119,7 @@ export const Navigation: React.FC = () => {
           </nav>
         </div>
 
-        {/* Bottom Language Selector matching reference image */}
+        {/* Bottom Language Selector */}
         <div className="p-4 border-t border-white/10">
           <div className="relative">
             <select
@@ -140,9 +136,7 @@ export const Navigation: React.FC = () => {
         </div>
       </aside>
 
-      {/* ═══════════════════════════════════════════
-          MOBILE BOTTOM NAV (matches mobile screen 1 in reference image)
-      ═══════════════════════════════════════════ */}
+      {/* MOBILE BOTTOM NAV */}
       <nav className="bottom-nav">
         <div className="grid grid-cols-4 h-full w-full max-w-md mx-auto items-center">
           {bottomTabs.map(({ to, label, icon: Icon, end }) => (

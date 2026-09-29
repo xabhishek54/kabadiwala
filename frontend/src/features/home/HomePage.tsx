@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../data/local/db';
 import { fetchRecyclerMatches } from '../../data/remote/apiClient';
+import { formatVernacularNumber, formatVernacularCurrency } from '../../utils/vernacularFormatter';
 import {
   Camera, IndianRupee, MapPin, ArrowRight,
   Package, CheckCircle2, Clock,
@@ -56,15 +58,28 @@ const NEARBY_RECYCLERS = [
 
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
+  const { t, i18n } = useTranslation();
+  const currentLang = i18n.language || 'en';
+
   const [user, setUser] = useState<{ name: string; role: string } | null>(null);
   const [district] = useState(localStorage.getItem('kabadiwala_district') || 'Pune, Maharashtra');
   const [showNotifications, setShowNotifications] = useState(false);
   const [nearbyRecyclersList, setNearbyRecyclersList] = useState<any[]>(NEARBY_RECYCLERS);
   const [authorizedCount, setAuthorizedCount] = useState<number>(3);
+  const storedUser = (() => {
+    try { return JSON.parse(localStorage.getItem('kabadiwala_user') || 'null'); } catch { return null; }
+  })();
+  const collectorId = localStorage.getItem('kabadiwala_collector_id') || storedUser?.id || 'col-demo-101';
 
   // Query live local IndexedDB lots & transactions
-  const liveTransactions = useLiveQuery(() => db.transactions.toArray(), []) || [];
-  const liveMaterials = useLiveQuery(() => db.materials.toArray(), []) || [];
+  const liveTransactions = useLiveQuery(
+    () => db.transactions.where('collector_id').equals(collectorId).toArray(),
+    [collectorId]
+  ) || [];
+  const liveMaterials = useLiveQuery(
+    () => db.materials.where('collector_id').equals(collectorId).toArray(),
+    [collectorId]
+  ) || [];
 
   useEffect(() => {
     const raw = localStorage.getItem('kabadiwala_user');
@@ -116,22 +131,23 @@ export const HomePage: React.FC = () => {
     return !tx || (tx.status !== 'closed' && tx.payment_status !== 'paid');
   }).length;
 
-  const displayTotalWeight = `${liveTotalWeight} kg`;
-  const displayTotalPayouts = `₹${liveTotalPayouts.toLocaleString('en-IN')}`;
-  const displayActiveLots = liveActiveCount;
+  const displayTotalWeight = `${formatVernacularNumber(liveTotalWeight, currentLang)} kg`;
+  const displayTotalPayouts = formatVernacularCurrency(liveTotalPayouts, currentLang);
+  const displayActiveLots = formatVernacularNumber(liveActiveCount, currentLang);
 
   // Desktop Recent Lots list merged with live data
   const recentLotsList = liveMaterials.slice(0, 5).map(mat => {
     const tx = liveTransactions.find(t => t.lot_id === mat.lot_id);
     const isPaid = tx?.payment_status === 'paid' || tx?.status === 'closed';
     const isMatched = tx?.status === 'matched';
+    const estVal = tx?.quoted_price || mat.estimated_value || 0;
     return {
       fullId: mat.lot_id,
       id: mat.lot_id.length > 12 ? `${mat.lot_id.slice(0, 10)}...` : mat.lot_id,
       name: mat.sub_category || mat.material_category || 'Scrap Lot',
       category: mat.material_category,
-      weight: mat.approx_weight_kg,
-      estimate: `₹${(tx?.quoted_price || mat.estimated_value || 0).toLocaleString('en-IN')}`,
+      weight: formatVernacularNumber(mat.approx_weight_kg || 0, currentLang),
+      estimate: formatVernacularCurrency(estVal, currentLang),
       status: isPaid ? 'Paid' : isMatched ? 'Matched' : 'Draft',
       statusColor: isPaid ? 'bg-emerald-100 text-emerald-800' : isMatched ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800',
     };
@@ -140,9 +156,7 @@ export const HomePage: React.FC = () => {
   return (
     <div className="pb-24 pt-4 px-4 sm:px-6 md:px-8 max-w-7xl mx-auto space-y-5 font-sans">
       
-      {/* ══════════════════════════════════════════════════════════════
-          DESKTOP TOP HEADER BAR
-      ══════════════════════════════════════════════════════════════ */}
+      {/* DESKTOP TOP HEADER BAR */}
       <div className="hidden md:flex items-center justify-between">
         <h1 className="text-2xl font-black text-stone-900 tracking-tight">
           👋 Namaste, {firstName}!
@@ -183,18 +197,14 @@ export const HomePage: React.FC = () => {
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════
-          MOBILE HEADER
-      ══════════════════════════════════════════════════════════════ */}
+      {/* MOBILE HEADER */}
       <div className="md:hidden">
         <h1 className="text-xl font-black text-stone-900 tracking-tight">
           👋 Namaste, {firstName}!
         </h1>
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════
-          DESKTOP 4 STAT CARDS ROW
-      ══════════════════════════════════════════════════════════════ */}
+      {/* DESKTOP 4 STAT CARDS ROW */}
       <div className="hidden md:grid grid-cols-4 gap-4">
         {/* Total Intake */}
         <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-1">
@@ -236,14 +246,12 @@ export const HomePage: React.FC = () => {
           </div>
           <div>
             <div className="text-xs text-stone-500 font-semibold">Authorized Recyclers</div>
-            <div className="text-2xl font-black text-stone-900">{authorizedCount}</div>
+            <div className="text-2xl font-black text-stone-900">{formatVernacularNumber(authorizedCount, currentLang)}</div>
           </div>
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════
-          CTA BANNER: Create New Lot (Desktop & Mobile versions)
-      ══════════════════════════════════════════════════════════════ */}
+      {/* CTA BANNER: Create New Lot */}
       {/* Desktop Version */}
       <div className="hidden md:flex items-center justify-between bg-[#F0FDF4] border border-[#DCFCE7] rounded-3xl p-6 shadow-xs">
         <div className="flex items-center gap-5">
@@ -251,13 +259,13 @@ export const HomePage: React.FC = () => {
             <Camera size={32} />
           </div>
           <div className="space-y-1">
-            <h2 className="text-lg font-black text-stone-900">Create New Lot</h2>
+            <h2 className="text-lg font-black text-stone-900">{t('lotCreation.title')}</h2>
             <button
               type="button"
               onClick={() => navigate('/create-lot')}
               className="mt-1 inline-flex items-center gap-2 bg-[#16A34A] hover:bg-emerald-700 text-white font-bold text-xs px-5 py-2.5 rounded-full shadow-md transition-all active:scale-95 cursor-pointer"
             >
-              <span>Start Now</span>
+              <span>{t('onboarding.getStarted')}</span>
               <ArrowRight size={14} />
             </button>
           </div>
@@ -276,7 +284,7 @@ export const HomePage: React.FC = () => {
         </div>
       </div>
 
-      {/* Mobile Version (matches Mobile Screen 1 in reference image) */}
+      {/* Mobile Version */}
       <div
         onClick={() => navigate('/create-lot')}
         className="md:hidden bg-[#16A34A] text-white rounded-3xl p-4 flex items-center justify-between shadow-md cursor-pointer active:scale-98 transition-all"
@@ -286,7 +294,7 @@ export const HomePage: React.FC = () => {
             <Camera size={26} className="text-white" />
           </div>
           <div>
-            <div className="text-base font-black leading-tight">New Lot</div>
+            <div className="text-base font-black leading-tight">{t('lotCreation.title')}</div>
             <div className="text-xs text-white/80 font-medium mt-0.5">Photo • Identify • Weigh</div>
           </div>
         </div>
@@ -296,9 +304,7 @@ export const HomePage: React.FC = () => {
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════
-          MOBILE 2x2 QUICK ACCESS TILES (Larger, padded, exact reference match)
-      ══════════════════════════════════════════════════════════════ */}
+      {/* MOBILE 2x2 QUICK ACCESS TILES */}
       <div className="md:hidden grid grid-cols-2 gap-4">
         {/* Tile 1: Price Board */}
         <button
@@ -309,7 +315,7 @@ export const HomePage: React.FC = () => {
           <div className="w-12 h-12 rounded-2xl bg-[#DBE7FE] text-blue-700 flex items-center justify-center text-2xl font-bold shrink-0">
             💰
           </div>
-          <div className="font-extrabold text-stone-900 text-base leading-tight">Price Board</div>
+          <div className="font-extrabold text-stone-900 text-base leading-tight">{t('nav.prices')}</div>
         </button>
 
         {/* Tile 2: Find Recyclers */}
@@ -321,7 +327,7 @@ export const HomePage: React.FC = () => {
           <div className="w-12 h-12 rounded-2xl bg-[#A7F3D0] text-emerald-800 flex items-center justify-center text-2xl font-bold shrink-0">
             📍
           </div>
-          <div className="font-extrabold text-stone-900 text-base leading-tight">Find Recyclers</div>
+          <div className="font-extrabold text-stone-900 text-base leading-tight">{t('nav.recyclers')}</div>
         </button>
 
         {/* Tile 3: My Earnings */}
@@ -333,7 +339,7 @@ export const HomePage: React.FC = () => {
           <div className="w-12 h-12 rounded-2xl bg-[#BBF7D0] text-green-900 flex items-center justify-center text-2xl font-bold shrink-0">
             ₹
           </div>
-          <div className="font-extrabold text-stone-900 text-base leading-tight">My Earnings</div>
+          <div className="font-extrabold text-stone-900 text-base leading-tight">{t('nav.ledger')}</div>
         </button>
 
         {/* Tile 4: Safety Guide */}
@@ -345,19 +351,17 @@ export const HomePage: React.FC = () => {
           <div className="w-12 h-12 rounded-2xl bg-[#FDE68A] text-amber-900 flex items-center justify-center text-2xl font-bold shrink-0">
             🛡️
           </div>
-          <div className="font-extrabold text-stone-900 text-base leading-tight">Safety Guide</div>
+          <div className="font-extrabold text-stone-900 text-base leading-tight">{t('nav.safety')}</div>
         </button>
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════
-          DESKTOP 2-COLUMN SECTION: Recent Lots (Left) + Nearby Recyclers (Right)
-      ══════════════════════════════════════════════════════════════ */}
+      {/* DESKTOP 2-COLUMN SECTION: Recent Lots (Left) + Nearby Recyclers (Right) */}
       <div className="hidden md:grid grid-cols-2 gap-6">
         
         {/* Left Column: Recent Lots */}
         <div className="bg-white rounded-3xl p-5 border border-stone-200 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="font-extrabold text-stone-900 text-base">Recent Lots</h3>
+            <h3 className="font-extrabold text-stone-900 text-base">{t('nav.lots')}</h3>
             <button type="button" onClick={() => navigate('/lots')} className="text-xs font-bold text-emerald-600 hover:underline">
               View All
             </button>
@@ -403,7 +407,7 @@ export const HomePage: React.FC = () => {
         {/* Right Column: Nearby Authorized Recyclers */}
         <div className="bg-white rounded-3xl p-5 border border-stone-200 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="font-extrabold text-stone-900 text-base">Nearby Authorized Recyclers</h3>
+            <h3 className="font-extrabold text-stone-900 text-base">{t('match.findRecyclers')}</h3>
             <button type="button" onClick={() => navigate('/recyclers')} className="text-xs font-bold text-emerald-600 hover:underline">
               View All
             </button>
@@ -426,7 +430,7 @@ export const HomePage: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-1 text-[11px] font-bold text-amber-700 mt-0.5">
                       <Star size={11} className="fill-amber-400 text-amber-400" />
-                      <span>{rec.rating} ({rec.reviews})</span>
+                      <span>{formatVernacularNumber(rec.rating, currentLang)} ({formatVernacularNumber(rec.reviews, currentLang)})</span>
                     </div>
                   </div>
                 </div>

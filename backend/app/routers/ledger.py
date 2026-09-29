@@ -7,8 +7,9 @@ from app.models.transaction import Transaction
 from app.models.material import Material
 from app.models.recycler import Recycler
 from app.models.enums import TransactionStatus, PaymentStatus, AccountType
+from app.auth import require_auth
 
-router = APIRouter(prefix="/ledger", tags=["ledger"])
+router = APIRouter(prefix="/ledger", tags=["ledger"], dependencies=[Depends(require_auth)])
 
 
 def _build_item(tx: Transaction, mat: Material, recycler: Optional[Recycler] = None) -> Dict[str, Any]:
@@ -51,7 +52,11 @@ def _build_item(tx: Transaction, mat: Material, recycler: Optional[Recycler] = N
 
 
 @router.get("/{collector_id}")
-def get_collector_ledger(collector_id: str, db: Session = Depends(get_db)):
+def get_collector_ledger(collector_id: str, db: Session = Depends(get_db), principal: dict = Depends(require_auth)):
+    if principal.get("role") == "collector" and collector_id != principal["sub"]:
+        raise HTTPException(status_code=403, detail="Ledger belongs to another collector")
+    if principal.get("role") == "recycler" and collector_id != principal["sub"]:
+        raise HTTPException(status_code=403, detail="Ledger belongs to another facility")
     collector = db.query(Collector).filter(Collector.collector_id == collector_id).first()
     if not collector:
         recycler = db.query(Recycler).filter(Recycler.recycler_id == collector_id).first()

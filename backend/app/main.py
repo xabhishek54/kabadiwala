@@ -1,6 +1,7 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.database import engine, Base, SessionLocal
+from app.database import engine, Base, SessionLocal, run_migrations
 from app.models import *  # Ensure all models are registered with Base
 from app.seed import seed_database
 from app.routers import (
@@ -17,20 +18,23 @@ from app.routers import (
     collectors_router,
 )
 
-# Initialize database schema tables automatically for prototype development
-Base.metadata.create_all(bind=engine)
-
-# Seed initial database records
-try:
-    with SessionLocal() as db_session:
-        seed_database(db_session)
-except Exception as e:
-    print(f"Database seed warning: {e}")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize database schema tables and auto-migrate columns on startup
+    run_migrations(engine)
+    Base.metadata.create_all(bind=engine)
+    try:
+        with SessionLocal() as db_session:
+            seed_database(db_session)
+    except Exception as e:
+        print(f"Database seed warning: {e}")
+    yield
 
 app = FastAPI(
     title="Kabadiwala Connect API",
     description="Backend services for Kabadiwala Connect PWA — e-waste collector formalization & recycling platform",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -61,3 +65,4 @@ def root():
         "version": "1.0.0",
         "docs_url": "/docs",
     }
+

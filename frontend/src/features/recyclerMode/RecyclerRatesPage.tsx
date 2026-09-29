@@ -1,15 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Save, CheckCircle2, Factory, RefreshCw, MapPin, Search, Tag } from 'lucide-react';
-import { updateRecyclerRates, API_BASE_URL } from '../../data/remote/apiClient';
-import { LocationPickerModal } from '../../components/LocationPickerModal';
+import { Save, CheckCircle2, RefreshCw, Search, Tag } from 'lucide-react';
+import { updateRecyclerRates } from '../../data/remote/apiClient';
 
 export const RecyclerRatesPage: React.FC = () => {
   const [recyclerId, setRecyclerId] = useState('rec-pune-001');
   const [recyclerName, setRecyclerName] = useState('EcoRecycle India');
-  const [showMapPicker, setShowMapPicker] = useState(false);
-  const [facilityAddress, setFacilityAddress] = useState(localStorage.getItem('kabadiwala_recycler_address') || 'Hadapsar Industrial Estate, Pune');
-  const [facilityLat, setFacilityLat] = useState<number>(parseFloat(localStorage.getItem('kabadiwala_recycler_lat') || '18.5089'));
-  const [facilityLng, setFacilityLng] = useState<number>(parseFloat(localStorage.getItem('kabadiwala_recycler_lng') || '73.9259'));
 
   const [rates, setRates] = useState<Record<string, number>>({
     PCB: 260.0,
@@ -23,13 +18,8 @@ export const RecyclerRatesPage: React.FC = () => {
 
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
-  const [pickupAvailable, setPickupAvailable] = useState(true);
-  const [serviceRadius, setServiceRadius] = useState<number>(10);
-  const [materialsAccepted, setMaterialsAccepted] = useState<string[]>(['PCB', 'BATTERY', 'CABLE', 'LCD_PANEL', 'MOTOR_MAGNET']);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategoryFilter, setActiveCategoryFilter] = useState('ALL');
-
-  const allMaterials = ['PCB', 'BATTERY', 'CABLE', 'LCD_PANEL', 'CRT', 'MOTOR_MAGNET', 'MIXED_PLASTIC', 'IRON', 'ALUMINIUM', 'NEWSPAPER'];
 
   const categoryLabels: Record<string, { label: string; icon: string; benchmark: number }> = {
     PCB: { label: 'Circuit Board (PCB)', icon: '🖥️', benchmark: 275.0 },
@@ -56,19 +46,6 @@ export const RecyclerRatesPage: React.FC = () => {
     }
   }, []);
 
-  const handleSelectFacilityLocation = (lat: number, lng: number, address: string) => {
-    setFacilityLat(lat);
-    setFacilityLng(lng);
-    setFacilityAddress(address);
-    localStorage.setItem('kabadiwala_recycler_lat', lat.toString());
-    localStorage.setItem('kabadiwala_recycler_lng', lng.toString());
-    localStorage.setItem('kabadiwala_recycler_address', address);
-  };
-
-  const toggleMaterial = (cat: string) => {
-    setMaterialsAccepted(prev => prev.includes(cat) ? prev.filter(m => m !== cat) : [...prev, cat]);
-  };
-
   const handleRateChange = (cat: string, val: string) => {
     const num = parseFloat(val) || 0;
     setRates((prev) => ({ ...prev, [cat]: num }));
@@ -78,15 +55,6 @@ export const RecyclerRatesPage: React.FC = () => {
     setIsSaving(true);
     try {
       await updateRecyclerRates(recyclerId, rates);
-      await fetch(`${API_BASE_URL}/recyclers/${encodeURIComponent(recyclerId)}/config`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pickup_available: pickupAvailable,
-          service_radius_km: serviceRadius,
-          materials_accepted: materialsAccepted,
-        }),
-      }).catch(() => {});
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 3000);
     } catch (e) {
@@ -133,7 +101,7 @@ export const RecyclerRatesPage: React.FC = () => {
           className="w-full sm:w-auto bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold px-4 py-2.5 rounded-2xl flex items-center justify-center space-x-2 shadow-xs transition-all text-xs disabled:opacity-50 cursor-pointer shrink-0"
         >
           {isSaving ? <RefreshCw size={15} className="animate-spin" /> : <Save size={15} />}
-          <span>{isSaving ? 'Saving...' : 'Save Buying Rates & Config'}</span>
+          <span>{isSaving ? 'Saving...' : 'Save Rates'}</span>
         </button>
       </div>
 
@@ -182,14 +150,11 @@ export const RecyclerRatesPage: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredCategories.map((cat) => {
           const meta = categoryLabels[cat] || { label: cat, icon: '📦', benchmark: 0 };
-          const isAccepted = materialsAccepted.includes(cat);
 
           return (
             <div
               key={cat}
-              className={`bg-white rounded-3xl p-4 border transition-all flex flex-col justify-between space-y-3 ${
-                isAccepted ? 'border-stone-200/80 shadow-xs hover:border-emerald-300' : 'border-stone-200 bg-stone-50/50 opacity-75'
-              }`}
+              className="bg-white rounded-3xl p-4 border border-stone-200/80 shadow-xs transition-all flex flex-col justify-between space-y-3 hover:border-emerald-300"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center space-x-3">
@@ -202,15 +167,6 @@ export const RecyclerRatesPage: React.FC = () => {
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => toggleMaterial(cat)}
-                  className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full shrink-0 transition-all cursor-pointer ${
-                    isAccepted ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-600'
-                  }`}
-                >
-                  {isAccepted ? 'Active ✓' : 'Disabled'}
-                </button>
               </div>
 
               {/* Rate Edit & Benchmark Section */}
@@ -237,101 +193,6 @@ export const RecyclerRatesPage: React.FC = () => {
         })}
       </div>
 
-      {/* Facility Service Area & OpenStreetMap Location Config — 2 Column Responsive Layout */}
-      <div className="bg-white rounded-3xl p-5 border border-stone-200/80 shadow-xs space-y-4">
-        <h3 className="font-black text-stone-900 text-base flex items-center space-x-2">
-          <Factory size={18} className="text-[#16A34A]" />
-          <span>Facility Service Area & OpenStreetMap Location</span>
-        </h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Left Column: Pickup & Location controls */}
-          <div className="space-y-3">
-            {/* Pickup Toggle */}
-            <div className="flex items-center justify-between bg-stone-50 p-3.5 rounded-2xl border border-stone-200/60">
-              <div>
-                <div className="font-extrabold text-stone-900 text-xs">🚚 Pickup Service Available</div>
-                <div className="text-[10px] text-stone-500 font-medium">Do you offer scrap pickup for matched collectors?</div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPickupAvailable(p => !p)}
-                className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer ${pickupAvailable ? 'bg-[#16A34A]' : 'bg-stone-300'}`}
-              >
-                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${pickupAvailable ? 'translate-x-5' : ''}`} />
-              </button>
-            </div>
-
-            {/* Service Radius */}
-            {pickupAvailable && (
-              <div className="flex items-center justify-between bg-stone-50 p-3.5 rounded-2xl border border-stone-200/60">
-                <div className="font-extrabold text-stone-900 text-xs">📍 Maximum Service Radius</div>
-                <select
-                  value={serviceRadius}
-                  onChange={e => setServiceRadius(Number(e.target.value))}
-                  className="text-xs font-extrabold p-2 rounded-xl border border-stone-300 bg-white focus:ring-2 focus:ring-[#16A34A]/20 cursor-pointer"
-                >
-                  {[5, 10, 20, 50, 100].map(r => (
-                    <option key={r} value={r}>{r} km Radius</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Facility OpenStreetMap Exact Location Card */}
-            <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-2xl p-3.5 space-y-2">
-              <div className="flex items-center justify-between text-xs font-extrabold text-emerald-900">
-                <span>📍 OpenStreetMap GPS Coordinates:</span>
-                <span className="font-mono text-[10px] text-emerald-700">{facilityLat.toFixed(4)}, {facilityLng.toFixed(4)}</span>
-              </div>
-              <div className="text-xs font-black text-stone-900 truncate">{facilityAddress}</div>
-              <button
-                type="button"
-                onClick={() => setShowMapPicker(true)}
-                className="w-full bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold text-xs py-2 rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-              >
-                <MapPin size={14} />
-                <span>Set Facility Location on OpenStreetMap</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Right Column: Accepted Materials Matrix */}
-          <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200/60 space-y-3">
-            <div className="font-extrabold text-stone-900 text-xs">✅ Materials Accepted Matrix</div>
-            <div className="grid grid-cols-2 gap-2">
-              {allMaterials.map(cat => {
-                const meta = categoryLabels[cat] || { label: cat, icon: '📦', benchmark: 0 };
-                const checked = materialsAccepted.includes(cat);
-                return (
-                  <button
-                    key={cat}
-                    type="button"
-                    onClick={() => toggleMaterial(cat)}
-                    className={`flex items-center space-x-2 p-2.5 rounded-xl border text-[11px] font-extrabold transition-all cursor-pointer ${
-                      checked ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-white border-stone-200 text-stone-400'
-                    }`}
-                  >
-                    <span className="text-base">{meta.icon}</span>
-                    <span className="truncate">{cat}</span>
-                    {checked && <span className="ml-auto text-emerald-600 font-bold">✓</span>}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* OpenStreetMap Modal */}
-      <LocationPickerModal
-        isOpen={showMapPicker}
-        onClose={() => setShowMapPicker(false)}
-        onSelectLocation={handleSelectFacilityLocation}
-        initialLat={facilityLat}
-        initialLng={facilityLng}
-        title="Set Recycling Facility OpenStreetMap Location"
-      />
     </div>
   );
 };

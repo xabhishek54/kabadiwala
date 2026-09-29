@@ -8,8 +8,9 @@ from app.models.collector import Collector
 from app.models.collection_authorization import CollectionAuthorization
 from app.models.enums import AuthorizationStatus, CollectionAuthStatus
 from app.schemas.authorization import CollectionAuthCreate, CollectionAuthResponse
+from app.auth import require_auth
 
-router = APIRouter(prefix="/authorizations", tags=["authorizations"])
+router = APIRouter(prefix="/authorizations", tags=["authorizations"], dependencies=[Depends(require_auth)])
 
 @router.post("", response_model=CollectionAuthResponse, status_code=status.HTTP_201_CREATED)
 def issue_collection_authorization(payload: CollectionAuthCreate, db: Session = Depends(get_db)):

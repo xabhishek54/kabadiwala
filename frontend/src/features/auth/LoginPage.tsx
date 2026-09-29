@@ -44,6 +44,7 @@ export const LoginPage: React.FC = () => {
           isNew: false,
         };
         localStorage.setItem('kabadiwala_user', JSON.stringify(userObj));
+        if (user.access_token) localStorage.setItem('kabadiwala_access_token', user.access_token);
         if (user.shop_code) localStorage.setItem('kabadiwala_shop_code', user.shop_code);
         localStorage.setItem('kabadiwala_district', user.district || 'Pune');
         localStorage.setItem('kabadiwala_account_type', user.account_type || 'independent');

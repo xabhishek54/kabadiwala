@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Factory, Package, Search, Filter, IndianRupee,
-  Award, ShieldCheck, RefreshCw, Layers, ShieldAlert, Tag,
-  MapPin, Calendar, Phone, Check, X, QrCode, Lock
+  Award, ShieldCheck, RefreshCw, Layers, Tag,
+  MapPin, Calendar, Phone, Check, X, QrCode, Lock, BookOpen, ArrowRight
 } from 'lucide-react';
 import { db } from '../../data/local/db';
 import { API_BASE_URL } from '../../data/remote/apiClient';
@@ -41,6 +41,8 @@ interface DashboardStats {
 
 export const RecyclerDashboardPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isQueuePage = location.pathname === '/recycler/queue';
 
   const userJson = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined' ? localStorage.getItem('kabadiwala_user') : null;
   const currentUser = userJson ? JSON.parse(userJson) : null;
@@ -56,11 +58,15 @@ export const RecyclerDashboardPage: React.FC = () => {
   const [isConfirmingPickup, setIsConfirmingPickup] = useState<boolean>(false);
 
   const fetchData = async () => {
+    if (!isQueuePage) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       // 1. Local IndexedDB matched transactions
       const localTxs = await db.transactions.toArray();
-      const matchedLocalTxs = localTxs.filter(t => !t.recycler_id || t.recycler_id === recyclerId);
+      const matchedLocalTxs = localTxs.filter(t => t.recycler_id === recyclerId);
       const allLocalMats = await db.materials.toArray();
       const localMatMap = new Map();
       allLocalMats.forEach(m => localMatMap.set(m.lot_id, m));
@@ -95,7 +101,7 @@ export const RecyclerDashboardPage: React.FC = () => {
         .then(r => (r.ok ? r.json() : []))
         .catch(() => []);
 
-      const scopedBackendLots = lotsRes.filter(l => !l.recycler_id || l.recycler_id === recyclerId);
+      const scopedBackendLots = lotsRes.filter(l => l.recycler_id === recyclerId);
 
       // Scoped mock datasets for demo accounts (only used if no local or backend lots exist)
       const facilityMockLots: Record<string, AdminLot[]> = {
@@ -115,7 +121,7 @@ export const RecyclerDashboardPage: React.FC = () => {
       };
 
       const realLots = [...localLots, ...scopedBackendLots];
-      const fallbackList = realLots.length === 0 ? (facilityMockLots[recyclerId] || facilityMockLots['rec-pune-001']) : [];
+      const fallbackList = realLots.length === 0 ? (facilityMockLots[recyclerId] || []) : [];
 
       // Combine & deduplicate
       const combined = [...realLots, ...fallbackList];
@@ -162,7 +168,16 @@ export const RecyclerDashboardPage: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, [recyclerId]);
+  }, [recyclerId, isQueuePage]);
+
+  useEffect(() => {
+    if (location.pathname === '/recycler/queue') {
+      const queueElement = document.getElementById('incoming-waste-queue');
+      if (queueElement && typeof queueElement.scrollIntoView === 'function') {
+        queueElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  }, [location.pathname]);
 
   const filteredLots = lots.filter(lot => {
     const matchesStatus = statusFilter === 'all' || lot.status === statusFilter;
@@ -251,43 +266,52 @@ export const RecyclerDashboardPage: React.FC = () => {
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <h1 className="text-base sm:text-lg font-black text-stone-900 tracking-tight">{currentUser?.name || 'EcoRecycle India — Portal'}</h1>
+              <h1 className="text-base sm:text-lg font-black text-stone-900 tracking-tight">{isQueuePage ? 'Incoming Waste' : 'Recycler Dashboard'}</h1>
               <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center space-x-1">
                 <ShieldCheck size={12} /> MPCB Verified
               </span>
             </div>
-            <p className="text-xs text-stone-500 font-medium">Formal E-Waste Aggregator ({currentUser?.district || 'Pune District'})</p>
+            <p className="text-xs text-stone-500 font-medium">{currentUser?.name || 'EcoRecycle India'} · {currentUser?.district || 'Pune District'}</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           <NotificationBell />
-          <NavLink
-            to="/recycler/rates"
-            className="px-3.5 py-1.5 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer"
-          >
-            <Tag size={13} className="text-[#16A34A]" />
-            <span>Manage Rates</span>
-          </NavLink>
-
-          <NavLink
-            to="/admin/anomalies"
-            className="px-3.5 py-1.5 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer"
-          >
-            <ShieldAlert size={13} className="text-rose-600 animate-pulse" />
-            <span>Alerts</span>
-          </NavLink>
-
-          <button
+          {isQueuePage && <button
             onClick={fetchData}
             className="p-2 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold transition-all cursor-pointer"
-            title="Refresh Queue"
+            title="Refresh incoming waste"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </button>
+          </button>}
         </div>
       </div>
 
+      {/* Mobile quick access */}
+      {!isQueuePage && <div className="grid grid-cols-2 gap-3 max-w-2xl">
+        {[
+          { label: 'Incoming Waste', note: 'View new lots', to: '/recycler/queue', icon: <Package size={24} />, bg: 'bg-emerald-50 border-emerald-200 text-emerald-800' },
+          { label: 'Buying Rates', note: 'Set material prices', to: '/recycler/rates', icon: <Tag size={24} />, bg: 'bg-blue-50 border-blue-200 text-blue-800' },
+          { label: 'Mineral Recovery', note: 'See recovered value', to: '/minerals', icon: <Factory size={24} />, bg: 'bg-amber-50 border-amber-200 text-amber-800' },
+          { label: 'Traceability', note: 'Check lot history', to: '/verify', icon: <BookOpen size={24} />, bg: 'bg-violet-50 border-violet-200 text-violet-800' },
+        ].map(action => (
+          <button
+            key={action.to}
+            type="button"
+            onClick={() => navigate(action.to)}
+            className={`${action.bg} border rounded-2xl p-3.5 text-left shadow-xs active:scale-95 transition-all cursor-pointer min-h-[92px] flex items-center gap-3`}
+          >
+            <div className="w-11 h-11 rounded-xl bg-white/80 flex items-center justify-center shrink-0">{action.icon}</div>
+            <div className="min-w-0">
+              <div className="font-extrabold text-stone-900 text-sm leading-tight">{action.label}</div>
+              <div className="text-[10px] font-semibold text-stone-500 mt-1">{action.note}</div>
+            </div>
+            <ArrowRight size={14} className="ml-auto shrink-0 opacity-60" />
+          </button>
+        ))}
+      </div>}
+
+      {isQueuePage && <>
       {/* Metrics Banner — Responsive 4 Columns */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         <div className="bg-white rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 border border-stone-200/80 shadow-xs hover:shadow-md transition-all space-y-1 sm:space-y-2 min-w-0">
@@ -336,7 +360,7 @@ export const RecyclerDashboardPage: React.FC = () => {
       </div>
 
       {/* Lot Queue Filters & Search */}
-      <div className="bg-white rounded-3xl p-5 border border-stone-200/80 shadow-xs space-y-4">
+      <div id="incoming-waste-queue" className="bg-white rounded-3xl p-5 border border-stone-200/80 shadow-xs space-y-4 scroll-mt-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <h3 className="font-black text-stone-900 text-lg flex items-center space-x-2.5">
             <Package size={22} className="text-[#16A34A]" />
@@ -657,6 +681,7 @@ export const RecyclerDashboardPage: React.FC = () => {
           </div>
         </div>
       )}
+      </>}
     </div>
   );
 };

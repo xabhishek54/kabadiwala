@@ -186,10 +186,11 @@ SECRET_KEY=your-secret-key
 
 ## 🤖 AI / ML Features
 
-### 1. In-Browser Material Classification (TF.js)
-- MobileNet-based model for 7 e-waste categories: Smartphones, Laptops, Batteries, CRT/Flat screens, PCBs, Cables, Mixed
-- Runs entirely in-browser — works offline
-- Graceful fallback to manual category picker when confidence < threshold
+### 1. In-Browser Material Suggestion
+- Deterministic image heuristic suggests supported e-waste categories and conditions
+- Runs in-browser and works offline
+- Category, subcategory, weight, and condition remain manually editable
+- The TensorFlow.js model path is scaffolded, but the shipped model asset is currently a stub
 
 ### 2. Price Trend Prediction (scikit-learn)
 - Linear regression on historical price-per-kg per category

@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { seedLocalPriceCache, db, type LocalMaterial, type LocalTransaction } from '../../data/local/db';
-import { fetchPrices, fetchRegisteredRecyclers, matchLotWithRecycler } from '../../data/remote/apiClient';
+import { seedLocalPriceCache, db } from '../../data/local/db';
+import { fetchPrices, fetchRegisteredRecyclers } from '../../data/remote/apiClient';
 import { AudioButton } from '../../components/AudioButton';
 import {
   MapPin, Search, ArrowLeft, Clock, Factory, ChevronRight, ChevronDown, ChevronUp,
-  ShieldCheck, Calendar, Phone, Building, X, Check
+  ShieldCheck, Phone, Building, X
 } from 'lucide-react';
 
 const CATEGORY_TABS = [
@@ -246,81 +246,10 @@ export const PriceBoardPage: React.FC = () => {
     return matchesTab && matchesSearch;
   });
 
-  const [selectedMatchOffer, setSelectedMatchOffer] = useState<{ item: MaterialPriceItem; rec: RecyclerOffer } | null>(null);
-  const [pickupDate, setPickupDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
-  const [pickupExactTime, setPickupExactTime] = useState<string>('14:30');
-  const [pickupWindow, setPickupWindow] = useState<'morning' | 'afternoon' | 'evening'>('afternoon');
-  const [isSubmittingMatch, setIsSubmittingMatch] = useState<boolean>(false);
+  const [selectedRecycler, setSelectedRecycler] = useState<{ item: MaterialPriceItem; rec: RecyclerOffer } | null>(null);
 
   const toggleExpand = (categoryCode: string) => {
     setExpandedCategoryCode(prev => prev === categoryCode ? null : categoryCode);
-  };
-
-  const openMatchModal = (item: MaterialPriceItem, rec: RecyclerOffer) => {
-    setSelectedMatchOffer({ item, rec });
-  };
-
-  const confirmMatchAndSchedule = async () => {
-    if (!selectedMatchOffer) return;
-    setIsSubmittingMatch(true);
-    const { item, rec } = selectedMatchOffer;
-
-    const existingMaterials = await db.materials.toArray();
-    const existingUnmatchedMat = existingMaterials.slice().reverse().find(m => m.material_category === item.categoryCode) || existingMaterials[existingMaterials.length - 1];
-
-    let targetLotId: string;
-    let weightKg = 5.0;
-
-    if (existingUnmatchedMat) {
-      targetLotId = existingUnmatchedMat.lot_id;
-      weightKg = existingUnmatchedMat.approx_weight_kg || 5.0;
-    } else {
-      targetLotId = `LOT-${Date.now().toString(36).toUpperCase()}`;
-      const newMat: LocalMaterial = {
-        lot_id: targetLotId,
-        material_category: item.categoryCode,
-        sub_category: item.name,
-        approx_weight_kg: weightKg,
-        condition: 'intact',
-        source_type: 'household',
-        estimated_value: Math.round(rec.rate * weightKg),
-        collector_id: 'col-001',
-        created_at: new Date().toISOString(),
-      };
-      await db.materials.put(newMat);
-    }
-
-    const calculatedPayout = Math.round(rec.rate * weightKg);
-
-    const tx: LocalTransaction = {
-      lot_id: targetLotId,
-      collector_id: 'col-001',
-      recycler_id: rec.id,
-      recycler_name: rec.name,
-      recycler_auth_ref: rec.mpcbRef || 'MPCB/E-WASTE/2024/VERIFIED',
-      recycler_phone: rec.phone || '9876543210',
-      recycler_facility_address: rec.location || 'Pune',
-      status: 'matched',
-      quoted_price: calculatedPayout,
-      payment_method: 'upi',
-      payment_status: 'unpaid',
-      pickup_scheduled_date: pickupDate,
-      pickup_exact_time: pickupExactTime,
-      pickup_window: pickupWindow,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    await db.transactions.put(tx);
-
-    try {
-      await matchLotWithRecycler(targetLotId, rec.id, calculatedPayout);
-    } catch (e) {
-      console.warn('Backend match transition offline:', e);
-    }
-
-    setIsSubmittingMatch(false);
-    setSelectedMatchOffer(null);
-    navigate(`/handover/${targetLotId}`);
   };
 
   return (
@@ -505,9 +434,9 @@ export const PriceBoardPage: React.FC = () => {
                                 <span className="font-black text-[11px] text-[#16A34A]">₹{rec.rate}/kg</span>
                                 <button
                                   type="button"
-                                  onClick={() => openMatchModal(item, rec)}
+                                  onClick={() => setSelectedRecycler({ item, rec })}
                                   className="p-1 rounded-lg bg-[#16A34A] text-white hover:bg-emerald-700 transition-colors cursor-pointer"
-                                  title="Sell to buyer"
+                                  title="View recycler details"
                                 >
                                   <ChevronRight size={13} />
                                 </button>
@@ -526,8 +455,8 @@ export const PriceBoardPage: React.FC = () => {
         </div>
       )}
 
-      {/* Match Confirmation & Pickup Schedule Modal */}
-      {selectedMatchOffer && (
+      {/* Recycler information modal */}
+      {selectedRecycler && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
           <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl border border-stone-200 shadow-2xl p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             
@@ -538,13 +467,13 @@ export const PriceBoardPage: React.FC = () => {
                   <ShieldCheck size={18} />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-stone-900 text-sm sm:text-base">Confirm Match & Schedule</h3>
-                  <p className="text-[11px] text-stone-500">Legal MPCB Traceability & Pickup Agreement</p>
+                  <h3 className="font-extrabold text-stone-900 text-sm sm:text-base">Recycler Information</h3>
+                  <p className="text-[11px] text-stone-500">Contact and buying details</p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedMatchOffer(null)}
+                onClick={() => setSelectedRecycler(null)}
                 className="p-1.5 rounded-full hover:bg-stone-100 text-stone-400 hover:text-stone-600 transition-colors"
               >
                 <X size={18} />
@@ -555,10 +484,10 @@ export const PriceBoardPage: React.FC = () => {
             <div className="bg-stone-50 border border-stone-200/80 rounded-2xl p-3.5 space-y-2">
               <div className="flex items-start justify-between">
                 <div>
-                  <h4 className="font-bold text-stone-900 text-xs sm:text-sm">{selectedMatchOffer.rec.name}</h4>
+                  <h4 className="font-bold text-stone-900 text-xs sm:text-sm">{selectedRecycler.rec.name}</h4>
                   <div className="flex items-center gap-1 text-[11px] text-emerald-700 font-semibold mt-0.5">
                     <ShieldCheck size={13} />
-                    <span>MPCB Ref: {selectedMatchOffer.rec.mpcbRef || 'MPCB/E-WASTE/2024/VERIFIED'}</span>
+                    <span>MPCB Ref: {selectedRecycler.rec.mpcbRef || 'MPCB/E-WASTE/2024/VERIFIED'}</span>
                   </div>
                 </div>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
@@ -569,11 +498,11 @@ export const PriceBoardPage: React.FC = () => {
               <div className="grid grid-cols-2 gap-2 pt-1 text-[11px] text-stone-600 border-t border-stone-200/50">
                 <div className="flex items-center gap-1.5">
                   <Building size={13} className="text-stone-400 shrink-0" />
-                  <span className="truncate">{selectedMatchOffer.rec.location} ({selectedMatchOffer.rec.distanceKm} km)</span>
+                  <span className="truncate">{selectedRecycler.rec.location} ({selectedRecycler.rec.distanceKm} km)</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Phone size={13} className="text-stone-400 shrink-0" />
-                  <span>+91 {selectedMatchOffer.rec.phone || '9876543210'}</span>
+                  <span>+91 {selectedRecycler.rec.phone || '9876543210'}</span>
                 </div>
               </div>
             </div>
@@ -582,102 +511,29 @@ export const PriceBoardPage: React.FC = () => {
             <div className="bg-emerald-50/50 border border-emerald-200/60 rounded-2xl p-3.5 flex items-center justify-between text-xs">
               <div>
                 <span className="text-stone-500 font-medium">Material: </span>
-                <strong className="text-stone-900 font-bold">{selectedMatchOffer.item.name}</strong>
+                <strong className="text-stone-900 font-bold">{selectedRecycler.item.name}</strong>
                 <div className="text-[11px] text-emerald-800 font-semibold mt-0.5">
-                  Rate: <strong>₹{selectedMatchOffer.rec.rate}/kg</strong>
+                  Rate: <strong>₹{selectedRecycler.rec.rate}/kg</strong>
                 </div>
               </div>
               <div className="text-right">
                 <div className="text-[10px] text-stone-500 uppercase tracking-wider font-semibold">Est. Payout</div>
                 <div className="text-base sm:text-lg font-black text-[#16A34A]">
-                  ₹{Math.round(selectedMatchOffer.rec.rate * 5.0)}
+                  ₹{Math.round(selectedRecycler.rec.rate * 5.0)}
                 </div>
                 <div className="text-[9px] text-stone-400">@ 5.0 kg approx</div>
               </div>
             </div>
 
-            {/* Pickup Schedule Selector */}
-            <div className="space-y-2.5 pt-1">
-              <label className="block text-xs font-extrabold text-stone-800 flex items-center gap-1.5">
-                <Calendar size={14} className="text-[#16A34A]" />
-                Select Agreed Pickup Schedule
-              </label>
-
-              {/* Date quick select */}
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { label: 'Today', date: new Date().toISOString().split('T')[0] },
-                  { label: 'Tomorrow', date: new Date(Date.now() + 86400000).toISOString().split('T')[0] },
-                  { label: '+2 Days', date: new Date(Date.now() + 172800000).toISOString().split('T')[0] },
-                ].map((d) => (
-                  <button
-                    key={d.date}
-                    type="button"
-                    onClick={() => setPickupDate(d.date)}
-                    className={`py-2 px-2 rounded-xl text-xs font-bold border transition-all ${
-                      pickupDate === d.date
-                        ? 'border-[#16A34A] bg-emerald-600 text-white shadow-xs'
-                        : 'border-stone-200 bg-stone-50 text-stone-700 hover:bg-stone-100'
-                    }`}
-                  >
-                    {d.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Time Window Selector */}
-              <div className="grid grid-cols-3 gap-2 pt-1">
-                {[
-                  { key: 'morning', label: 'Morning', time: '9am–12pm' },
-                  { key: 'afternoon', label: 'Afternoon', time: '12pm–4pm' },
-                  { key: 'evening', label: 'Evening', time: '4pm–7pm' },
-                ].map((w) => (
-                  <button
-                    key={w.key}
-                    type="button"
-                    onClick={() => {
-                      setPickupWindow(w.key as any);
-                      if (w.key === 'morning') setPickupExactTime('09:30');
-                      else if (w.key === 'afternoon') setPickupExactTime('14:30');
-                      else if (w.key === 'evening') setPickupExactTime('17:30');
-                    }}
-                    className={`py-2 px-2 rounded-xl text-center border transition-all ${
-                      pickupWindow === w.key
-                        ? 'border-[#16A34A] bg-emerald-50 text-[#16A34A] ring-1 ring-[#16A34A]'
-                        : 'border-stone-200 bg-stone-50 text-stone-600 hover:bg-stone-100'
-                    }`}
-                  >
-                    <div className="text-[11px] font-bold">{w.label}</div>
-                    <div className="text-[9px] opacity-75">{w.time}</div>
-                  </button>
-                ))}
-              </div>
+            <div className="bg-stone-50 border border-stone-200/70 rounded-2xl p-3 text-xs text-stone-600 space-y-1.5">
+              <div className="flex justify-between"><span>Distance</span><strong className="text-stone-900">{selectedRecycler.rec.distanceKm} km</strong></div>
+              <div className="flex justify-between"><span>Buying rate</span><strong className="text-emerald-700">₹{selectedRecycler.rec.rate}/kg</strong></div>
+              <div className="flex justify-between"><span>Pickup</span><strong className="text-stone-900">{selectedRecycler.rec.distanceKm ? 'Contact facility' : 'Ask facility'}</strong></div>
             </div>
 
-            {/* Submit CTA */}
-            <div className="pt-2 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setSelectedMatchOffer(null)}
-                className="flex-1 py-3 px-4 rounded-xl border border-stone-200 font-bold text-stone-700 hover:bg-stone-50 text-xs transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={isSubmittingMatch}
-                onClick={confirmMatchAndSchedule}
-                className="flex-[2] py-3 px-4 rounded-xl bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold text-xs shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition-colors cursor-pointer"
-              >
-                {isSubmittingMatch ? (
-                  <span>Confirming...</span>
-                ) : (
-                  <>
-                    <Check size={16} />
-                    <span>Confirm & Match Lot</span>
-                  </>
-                )}
-              </button>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setSelectedRecycler(null)} className="flex-1 py-2.5 rounded-xl border border-stone-300 text-stone-700 font-bold text-xs cursor-pointer hover:bg-stone-50">Close</button>
+              <a href={`tel:${selectedRecycler.rec.phone}`} className="flex-1 bg-[#16A34A] hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1">Call recycler</a>
             </div>
 
           </div>

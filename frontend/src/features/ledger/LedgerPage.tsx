@@ -5,7 +5,7 @@ import { db } from '../../data/local/db';
 import { fetchCollectorLedger } from '../../data/remote/apiClient';
 import {
   TrendingUp, IndianRupee, ArrowLeft,
-  CheckCircle2, Clock, Wallet, RefreshCw, X, ShieldCheck, QrCode
+  CheckCircle2, Clock, Wallet, RefreshCw, X, ShieldCheck
 } from 'lucide-react';
 
 interface PaymentEntry {
@@ -36,8 +36,14 @@ export const LedgerPage: React.FC = () => {
   const userObj = userStr ? JSON.parse(userStr) : null;
   const collectorId = localStorage.getItem('kabadiwala_collector_id') || userObj?.id || 'col-demo-101';
 
-  const liveTransactions = useLiveQuery(() => db.transactions.toArray(), []) || [];
-  const liveMaterials = useLiveQuery(() => db.materials.toArray(), []) || [];
+  const liveTransactions = useLiveQuery(
+    () => db.transactions.where('collector_id').equals(collectorId).toArray(),
+    [collectorId]
+  ) || [];
+  const liveMaterials = useLiveQuery(
+    () => db.materials.where('collector_id').equals(collectorId).toArray(),
+    [collectorId]
+  ) || [];
 
   useEffect(() => {
     async function load() {
@@ -332,20 +338,6 @@ export const LedgerPage: React.FC = () => {
               >
                 Close
               </button>
-              {selectedEntry.status !== 'paid' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const targetId = selectedEntry.id;
-                    setSelectedEntry(null);
-                    navigate(`/handover/${targetId}`);
-                  }}
-                  className="flex-1 bg-[#16A34A] hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1 cursor-pointer"
-                >
-                  <QrCode size={14} />
-                  <span>Handover QR</span>
-                </button>
-              )}
             </div>
 
           </div>

@@ -1,0 +1,29 @@
+services:
+  # FastAPI backend (free tier: 750h/month, spins down after 15min idle)
+  - type: web
+    name: kabadiwala-api
+    runtime: python
+    region: singapore  # nearest to India
+    branch: main
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: kabadiwala-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ENVIRONMENT
+        value: production
+    healthCheckPath: /
+    plan: free
+
+databases:
+  # Render managed PostgreSQL (free tier: 1GB storage, 90-day free trial → use Supabase for permanent free)
+  - name: kabadiwala-db
+    region: singapore
+    plan: free
+    databaseName: kabadiwala
+    user: kabadiwala_user

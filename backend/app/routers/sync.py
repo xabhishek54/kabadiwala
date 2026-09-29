@@ -9,11 +9,15 @@ from app.models.price import PriceObservation
 from app.models.recycler import Recycler
 from app.models.enums import TransactionStatus, AuthorizationStatus
 from app.schemas.sync import SyncPushRequest, SyncPushResponse, SyncPushResponseItem, SyncPullResponse
+from app.auth import require_auth
 
-router = APIRouter(prefix="/sync", tags=["sync"])
+router = APIRouter(prefix="/sync", tags=["sync"], dependencies=[Depends(require_auth)])
 
 @router.post("/push", response_model=SyncPushResponse)
-def sync_push(payload: SyncPushRequest, db: Session = Depends(get_db)):
+def sync_push(payload: SyncPushRequest, db: Session = Depends(get_db), principal: dict = Depends(require_auth)):
+    if principal.get("role") == "collector" and payload.collector_id != principal["sub"]:
+        raise HTTPException(status_code=403, detail="Sync owner does not match session")
+    owner_id = principal["sub"]
     results = []
     processed_count = 0
 
@@ -38,7 +42,7 @@ def sync_push(payload: SyncPushRequest, db: Session = Depends(get_db)):
                         condition_ml_used=p.get("condition_ml_used", False),
                         source_type=p.get("source_type", "household"),
                         estimated_value=float(p.get("estimated_value", 0.0)),
-                        collector_id=payload.collector_id,
+                        collector_id=owner_id,
                         classifier_confidence=p.get("classifier_confidence"),
                         classifier_used=p.get("classifier_used", False),
                     )
@@ -49,7 +53,7 @@ def sync_push(payload: SyncPushRequest, db: Session = Depends(get_db)):
                     if not tx_exist:
                         tx = Transaction(
                             lot_id=lot_id,
-                            collector_id=payload.collector_id,
+                            collector_id=owner_id,
                             status=TransactionStatus.draft,
                             quoted_price=float(p.get("estimated_value", 0.0)),
                         )
@@ -61,12 +65,17 @@ def sync_push(payload: SyncPushRequest, db: Session = Depends(get_db)):
             elif entity_type == "transaction":
                 lot_id = item.client_uuid
                 tx = db.query(Transaction).filter(Transaction.lot_id == lot_id).first()
-                if tx:
-                    tx.status = p.get("status", tx.status)
-                    tx.recycler_id = p.get("recycler_id", tx.recycler_id)
-                    tx.final_sale_value = p.get("final_sale_value", tx.final_sale_value)
-                    tx.payment_method = p.get("payment_method", tx.payment_method)
-                    tx.payment_status = p.get("payment_status", tx.payment_status)
+                if not tx:
+                    raise ValueError(f"Transaction '{lot_id}' not found")
+                for field in (
+                    "status", "recycler_id", "final_sale_value", "payment_method",
+                    "payment_status", "collection_lat", "collection_lng",
+                    "collection_address", "pickup_scheduled_date", "pickup_exact_time",
+                    "pickup_window", "pickup_notes", "handover_lat", "handover_lng",
+                    "handover_address",
+                ):
+                    if field in p and p[field] is not None:
+                        setattr(tx, field, p[field])
 
                 results.append(SyncPushResponseItem(client_uuid=lot_id, status="synced"))
                 processed_count += 1

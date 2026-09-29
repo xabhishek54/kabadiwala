@@ -8,8 +8,9 @@ from app.models.traceability import TraceabilityEvent
 from app.models.enums import TransactionStatus, EventActor
 from app.schemas.material import MaterialCreate, MaterialResponse
 from app.schemas.transaction import TransactionResponse
+from app.auth import require_auth
 
-router = APIRouter(prefix="/lots", tags=["lots"])
+router = APIRouter(prefix="/lots", tags=["lots"], dependencies=[Depends(require_auth)])
 
 # Valid state machine transitions per 03-technical-architecture.md §4
 VALID_TRANSITIONS = {
@@ -23,13 +24,18 @@ VALID_TRANSITIONS = {
 }
 
 @router.post("", response_model=MaterialResponse, status_code=status.HTTP_201_CREATED)
-def create_lot(payload: MaterialCreate, db: Session = Depends(get_db)):
+def create_lot(payload: MaterialCreate, db: Session = Depends(get_db), principal: dict = Depends(require_auth)):
+    if principal.get("role") != "collector":
+        raise HTTPException(status_code=403, detail="Only collectors can create lots")
     # Check if lot already exists
     existing = db.query(Material).filter(Material.lot_id == payload.lot_id).first() if payload.lot_id else None
     if existing:
+        if existing.collector_id != principal["sub"]:
+            raise HTTPException(status_code=403, detail="Lot belongs to another collector")
         return existing
 
     material_data = payload.dict(exclude_unset=True)
+    material_data["collector_id"] = principal["sub"]
     material = Material(**material_data)
     db.add(material)
 
@@ -56,15 +62,19 @@ def create_lot(payload: MaterialCreate, db: Session = Depends(get_db)):
     return material
 
 @router.get("/{lot_id}", response_model=MaterialResponse)
-def get_lot(lot_id: str, db: Session = Depends(get_db)):
+def get_lot(lot_id: str, db: Session = Depends(get_db), principal: dict = Depends(require_auth)):
     material = db.query(Material).filter(Material.lot_id == lot_id).first()
     if not material:
         raise HTTPException(status_code=404, detail="Lot not found")
+    if principal.get("role") == "collector" and material.collector_id != principal["sub"]:
+        raise HTTPException(status_code=403, detail="Lot belongs to another collector")
     return material
 
 @router.get("", response_model=List[MaterialResponse])
-def list_lots(collector_id: Optional[str] = None, skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+def list_lots(collector_id: Optional[str] = None, skip: int = 0, limit: int = 50, db: Session = Depends(get_db), principal: dict = Depends(require_auth)):
     query = db.query(Material)
+    if principal.get("role") == "collector":
+        collector_id = principal["sub"]
     if collector_id:
         query = query.filter(Material.collector_id == collector_id)
     return query.order_by(Material.created_at.desc()).offset(skip).limit(limit).all()
@@ -80,10 +90,13 @@ def transition_lot_state(
     gps_lng: Optional[float] = None,
     notes: Optional[str] = None,
     db: Session = Depends(get_db),
+    principal: dict = Depends(require_auth),
 ):
     tx = db.query(Transaction).filter(Transaction.lot_id == lot_id).first()
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction for lot not found")
+    if principal.get("role") == "collector" and tx.collector_id != principal["sub"]:
+        raise HTTPException(status_code=403, detail="Lot belongs to another collector")
 
     allowed = VALID_TRANSITIONS.get(tx.status, [])
     if target_status not in allowed:
@@ -114,11 +127,13 @@ def transition_lot_state(
 
 
 @router.get("/{lot_id}/events", tags=["traceability"])
-def get_lot_traceability_events(lot_id: str, db: Session = Depends(get_db)):
+def get_lot_traceability_events(lot_id: str, db: Session = Depends(get_db), principal: dict = Depends(require_auth)):
     """Return the full chain-of-custody audit trail for a lot — every event in chronological order."""
     material = db.query(Material).filter(Material.lot_id == lot_id).first()
     if not material:
         raise HTTPException(status_code=404, detail="Lot not found")
+    if principal.get("role") == "collector" and material.collector_id != principal["sub"]:
+        raise HTTPException(status_code=403, detail="Lot belongs to another collector")
 
     events = (
         db.query(TraceabilityEvent)

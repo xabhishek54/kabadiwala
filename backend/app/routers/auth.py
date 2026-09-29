@@ -9,6 +9,7 @@ from app.models.recycler import Recycler
 from app.models.enums import AccountType
 from app.schemas.collector import CollectorCreate, CollectorResponse
 from app.schemas.recycler import RecyclerCreate, RecyclerResponse
+from app.auth import create_access_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -24,6 +25,8 @@ class LoginResponse(BaseModel):
     account_type: Optional[str] = None
     shop_code: Optional[str] = None
     district: Optional[str] = "Pune"
+    access_token: str
+    token_type: str = "bearer"
 
 @router.post("/login", response_model=LoginResponse)
 def login_user(payload: LoginRequest, db: Session = Depends(get_db)):
@@ -45,6 +48,7 @@ def login_user(payload: LoginRequest, db: Session = Depends(get_db)):
             name=recycler.name,
             role="recycler",
             district="Pune",
+            access_token=create_access_token(recycler.recycler_id, "recycler"),
         )
 
     else:
@@ -66,6 +70,7 @@ def login_user(payload: LoginRequest, db: Session = Depends(get_db)):
             account_type=collector.account_type.value if collector.account_type else "independent",
             shop_code=collector.shop_code,
             district=collector.operating_locality or "Pune",
+            access_token=create_access_token(collector.collector_id, "collector"),
         )
 
 @router.post("/signup/collector", response_model=CollectorResponse, status_code=status.HTTP_201_CREATED)

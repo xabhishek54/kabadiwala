@@ -8,8 +8,9 @@ from app.models.material import Material
 from app.models.transaction import Transaction
 from app.models.enums import AuthorizationStatus, MaterialCategory, MineralEnum, TransactionStatus, PaymentStatus
 from app.services.anomaly_detector import detect_transaction_anomalies
+from app.auth import require_roles
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_roles("recycler", "admin"))])
 
 @router.get("/recyclers/pending", response_model=List[dict])
 def list_pending_recyclers(db: Session = Depends(get_db)):
@@ -204,7 +205,7 @@ def get_critical_minerals_impact(district: str = "Pune District & Maharashtra Hu
     Returns estimated critical minerals recovery totals based on processed e-waste volume.
     Translates raw e-waste tonnage into strategic mineral values (Li, Co, Nd, Ta, Ga, In, Cu).
     """
-    total_weight = db.query(func.sum(Material.approx_weight_kg)).scalar() or 1250.0
+    total_weight = db.query(func.sum(Material.approx_weight_kg)).scalar() or 0.0
 
     # Convert kg to mineral gram estimates
     copper_g = round(total_weight * 200.0, 1)    # 200g Cu / kg e-waste

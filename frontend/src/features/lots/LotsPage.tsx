@@ -44,8 +44,14 @@ export const LotsPage: React.FC = () => {
   const collectorId = localStorage.getItem('kabadiwala_collector_id') || userObj?.id || 'col-demo-101';
 
   // Live IndexedDB query
-  const liveTransactions = useLiveQuery(() => db.transactions.toArray(), []) || [];
-  const liveMaterials = useLiveQuery(() => db.materials.toArray(), []) || [];
+  const liveTransactions = useLiveQuery(
+    () => db.transactions.where('collector_id').equals(collectorId).toArray(),
+    [collectorId]
+  ) || [];
+  const liveMaterials = useLiveQuery(
+    () => db.materials.where('collector_id').equals(collectorId).toArray(),
+    [collectorId]
+  ) || [];
 
   useEffect(() => {
     async function loadBackendLots() {
@@ -167,11 +173,6 @@ export const LotsPage: React.FC = () => {
   const displayLots = Array.from(lotMap.values());
 
   // Metrics
-  const activeCount = displayLots.filter(l => l.status !== 'paid' && l.status !== 'closed').length;
-  const matchedCount = displayLots.filter(l => l.status === 'matched').length;
-  const completedCount = displayLots.filter(l => l.status === 'paid' || l.status === 'closed').length;
-  const totalWeight = displayLots.reduce((acc, l) => acc + l.weight, 0);
-
   const filteredLots = displayLots.filter(l => {
     if (activeTab === 'Active' && (l.status === 'paid' || l.status === 'closed')) return false;
     if (activeTab === 'Matched' && l.status !== 'matched') return false;
@@ -215,19 +216,6 @@ export const LotsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Compact inline stats strip */}
-      <div className="flex items-center gap-3 text-[11px] font-semibold text-stone-500 bg-white border border-stone-200/80 rounded-2xl px-4 py-2.5 shadow-xs overflow-x-auto scrollbar-hide">
-        <span className="shrink-0">{displayLots.length} <span className="font-black text-stone-800">Total</span></span>
-        <span className="text-stone-300">·</span>
-        <span className="shrink-0 text-amber-700">{activeCount} <span className="font-black">Pending</span></span>
-        <span className="text-stone-300">·</span>
-        <span className="shrink-0 text-blue-700">{matchedCount} <span className="font-black">Matched</span></span>
-        <span className="text-stone-300">·</span>
-        <span className="shrink-0 text-emerald-700">{completedCount} <span className="font-black">Done</span></span>
-        <span className="text-stone-300">·</span>
-        <span className="shrink-0 text-stone-500">{totalWeight} kg</span>
-      </div>
-
       {/* Search & Filter Bar */}
       <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
         <div className="relative flex-1 max-w-md">
@@ -243,11 +231,16 @@ export const LotsPage: React.FC = () => {
 
         {/* Tab Filters */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide">
-          {(['All', 'Active', 'Matched', 'Completed'] as const).map(tab => {
+          {([
+            ['All', 'All'],
+            ['Pending', 'Active'],
+            ['Matched', 'Matched'],
+            ['Done', 'Completed'],
+          ] as const).map(([label, tab]) => {
             const isActive = activeTab === tab;
             return (
               <button
-                key={tab}
+                key={label}
                 type="button"
                 onClick={() => setActiveTab(tab)}
                 className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
@@ -256,7 +249,7 @@ export const LotsPage: React.FC = () => {
                     : 'bg-white border border-stone-200/80 text-stone-700 hover:bg-stone-50'
                 }`}
               >
-                {tab}
+                {label}
               </button>
             );
           })}

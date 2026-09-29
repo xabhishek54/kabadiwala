@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { ShieldCheck, ShieldAlert, Search, Package, Award, UserCheck, Factory, QrCode, X, BookOpen, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Search, Package, Award, UserCheck, Factory, QrCode, X, BookOpen } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { API_BASE_URL } from '../../data/remote/apiClient';
 

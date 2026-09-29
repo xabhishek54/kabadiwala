@@ -6,8 +6,9 @@ from app.database import get_db
 from app.models.collector import Collector
 from app.models.enums import AccountType
 from app.schemas.collector import CollectorResponse
+from app.auth import require_auth
 
-router = APIRouter(prefix="/collectors", tags=["collectors"])
+router = APIRouter(prefix="/collectors", tags=["collectors"], dependencies=[Depends(require_auth)])
 
 class LinkShopRequest(BaseModel):
     feriwala_collector_id: str

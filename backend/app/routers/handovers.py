@@ -6,16 +6,18 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.transaction import Transaction
+from app.models.material import Material
 from app.models.traceability import TraceabilityEvent
 from app.models.price import PriceObservation
 from app.models.collector import Collector
 from app.models.enums import TransactionStatus, EventActor, PaymentStatus, ObservationSource, ObservationUnit, PriceChannel
 from app.schemas.transaction import TransactionResponse
 from app.schemas.traceability import TraceabilityEventResponse
+from app.auth import require_auth
 
 from pydantic import BaseModel
 
-router = APIRouter(prefix="/handovers", tags=["handovers"])
+router = APIRouter(prefix="/handovers", tags=["handovers"], dependencies=[Depends(require_auth)])
 
 class HandoverConfirmPayload(BaseModel):
     lot_id: str
@@ -30,8 +32,12 @@ def generate_short_code(length: int = 6) -> str:
     return ''.join(random.choices(string.digits, k=length))
 
 @router.get("/{lot_id}/qr-token")
-def get_handover_qr_token(lot_id: str, db: Session = Depends(get_db)):
+def get_handover_qr_token(lot_id: str, db: Session = Depends(get_db), principal: dict = Depends(require_auth)):
     tx = db.query(Transaction).filter(Transaction.lot_id == lot_id).first()
+    if tx and principal.get("role") == "collector" and tx.collector_id != principal["sub"]:
+        raise HTTPException(status_code=403, detail="Lot belongs to another collector")
+    if tx and principal.get("role") == "recycler" and tx.recycler_id and tx.recycler_id != principal["sub"]:
+        raise HTTPException(status_code=403, detail="Lot is assigned to another recycler")
 
     existing_event = db.query(TraceabilityEvent).filter(
         TraceabilityEvent.lot_id == lot_id,
@@ -64,10 +70,29 @@ def get_handover_qr_token(lot_id: str, db: Session = Depends(get_db)):
 def confirm_handover(
     payload: HandoverConfirmPayload,
     db: Session = Depends(get_db),
+    principal: dict = Depends(require_auth),
 ):
+    if principal.get("role") != "recycler":
+        raise HTTPException(status_code=403, detail="Only a recycler can confirm handover")
     tx = db.query(Transaction).filter(Transaction.lot_id == payload.lot_id).first()
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
+    if tx.recycler_id and tx.recycler_id != principal["sub"]:
+        raise HTTPException(status_code=403, detail="Lot is assigned to another recycler")
+
+    material = db.query(Material).filter(Material.lot_id == payload.lot_id).first()
+    if not material:
+        raise HTTPException(status_code=404, detail="Material lot not found")
+
+    if not payload.short_code:
+        raise HTTPException(status_code=400, detail="Handover code is required")
+
+    latest_token = db.query(TraceabilityEvent).filter(
+        TraceabilityEvent.lot_id == payload.lot_id,
+        TraceabilityEvent.handover_reference_no.isnot(None),
+    ).order_by(TraceabilityEvent.timestamp.desc()).first()
+    if not latest_token or payload.short_code.strip() != latest_token.handover_reference_no:
+        raise HTTPException(status_code=400, detail="Invalid handover code")
 
     tx.recycler_id = payload.recycler_id
     tx.status = TransactionStatus.confirmed
@@ -83,8 +108,8 @@ def confirm_handover(
     # ── Auto-record price observation from this real transaction ──────────────
     # This converts every confirmed sale into live, district-specific price data
     actual_value = payload.final_sale_value or tx.quoted_price
-    if actual_value and tx.weight_kg and tx.weight_kg > 0:
-        price_per_kg = actual_value / tx.weight_kg
+    if actual_value and material.approx_weight_kg and material.approx_weight_kg > 0:
+        price_per_kg = actual_value / material.approx_weight_kg
         # Resolve the collector's district for location tagging
         collector = db.query(Collector).filter(
             Collector.collector_id == tx.collector_id
@@ -92,8 +117,8 @@ def confirm_handover(
         district = (collector.operating_locality or "Pune") if collector else "Pune"
 
         obs = PriceObservation(
-            material_category=tx.material_category,
-            sub_category=tx.sub_category or tx.material_category.value,
+            material_category=material.material_category,
+            sub_category=material.sub_category or material.material_category.value,
             location_district=district,
             buying_price=round(price_per_kg, 2),
             quoted_price=round(price_per_kg, 2),

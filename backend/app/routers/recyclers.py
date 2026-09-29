@@ -8,6 +8,7 @@ from app.models.price import PriceObservation
 from app.models.enums import AuthorizationStatus, MaterialCategory, ObservationSource, ObservationUnit, PriceChannel
 from app.schemas.recycler import RecyclerCreate, RecyclerResponse, RecyclerMatchResponse
 from app.services.matching_engine import haversine_distance, compute_blended_matching_score
+from app.auth import require_auth
 
 router = APIRouter(prefix="/recyclers", tags=["recyclers"])
 
@@ -25,7 +26,8 @@ def list_recyclers(
     status_filter: Optional[AuthorizationStatus] = None,
     skip: int = 0,
     limit: int = 50,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_auth),
 ):
     query = db.query(Recycler)
     if status_filter:
@@ -33,7 +35,7 @@ def list_recyclers(
     return query.offset(skip).limit(limit).all()
 
 @router.get("/{recycler_id}", response_model=RecyclerResponse)
-def get_recycler(recycler_id: str, db: Session = Depends(get_db)):
+def get_recycler(recycler_id: str, db: Session = Depends(get_db), _: dict = Depends(require_auth)):
     recycler = db.query(Recycler).filter(Recycler.recycler_id == recycler_id).first()
     if not recycler:
         raise HTTPException(status_code=404, detail="Recycler not found")
@@ -43,7 +45,8 @@ def get_recycler(recycler_id: str, db: Session = Depends(get_db)):
 def update_authorization_status(
     recycler_id: str,
     status_value: AuthorizationStatus,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_auth),
 ):
     recycler = db.query(Recycler).filter(Recycler.recycler_id == recycler_id).first()
     if not recycler:
@@ -64,7 +67,8 @@ def match_recyclers(
     w2: float = 0.35,
     w3: float = 0.15,
     w4: float = 0.10,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_auth),
 ):
     # HARD FILTER: Only verified recyclers are considered per spec
     verified_recyclers = db.query(Recycler).filter(
@@ -125,7 +129,8 @@ class RecyclerRatesPayload(BaseModel):
 def update_recycler_rates(
     recycler_id: str,
     payload: RecyclerRatesPayload,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_auth),
 ):
     recycler = db.query(Recycler).filter(Recycler.recycler_id == recycler_id).first()
     if not recycler:
@@ -180,7 +185,8 @@ class RecyclerConfigPayload(BaseModel):
 def update_recycler_config(
     recycler_id: str,
     payload: RecyclerConfigPayload,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_auth),
 ):
     recycler = db.query(Recycler).filter(Recycler.recycler_id == recycler_id).first()
     if not recycler:

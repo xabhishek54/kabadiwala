@@ -81,6 +81,7 @@ const AppLayout: React.FC = () => {
 
           {/* Recycler / Admin routes with role protection */}
           <Route path="/recycler" element={<RequireRole allowedRoles={['recycler']}><RecyclerDashboardPage /></RequireRole>} />
+          <Route path="/recycler/queue" element={<RequireRole allowedRoles={['recycler']}><RecyclerDashboardPage /></RequireRole>} />
           <Route path="/recycler/rates" element={<RequireRole allowedRoles={['recycler']}><RecyclerRatesPage /></RequireRole>} />
           <Route path="/admin/anomalies" element={<RequireRole allowedRoles={['recycler', 'admin']}><AnomalyPage /></RequireRole>} />
 

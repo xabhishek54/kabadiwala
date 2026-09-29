@@ -2,14 +2,26 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 export default defineConfig({
   plugins: [
     react(),
+    viteStaticCopy({
+      targets: [
+        { src: 'node_modules/piper-tts-web/dist/onnx', dest: '.' },
+        { src: 'node_modules/piper-tts-web/dist/piper', dest: '.' },
+        { src: 'node_modules/piper-tts-web/dist/worker', dest: '.' },
+      ],
+    }),
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icons/*.png'],
+      workbox: {
+        maximumFileSizeToCacheInBytes: 60 * 1024 * 1024,
+        globIgnores: ['**/onnx/**', '**/worker/**', '**/piper/**'],
+      },
       manifest: {
         name: 'Kabadiwala Connect',
         short_name: 'Kabadiwala',
@@ -49,6 +61,9 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    host: true
+    host: true,
+    watch: {
+      ignored: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/*.db*']
+    }
   }
 });

@@ -10,8 +10,9 @@ from app.models.price import PriceObservation
 from app.models.enums import MaterialCategory, PriceChannel, ObservationSource, ObservationUnit
 from app.schemas.price import PriceObservationCreate, PriceObservationResponse, PriceAggregateResponse
 from app.services.pricing_engine import refine_price
+from app.auth import require_auth
 
-router = APIRouter(prefix="/prices", tags=["prices"])
+router = APIRouter(prefix="/prices", tags=["prices"], dependencies=[Depends(require_auth)])
 
 
 class PriceRefineRequest(BaseModel):

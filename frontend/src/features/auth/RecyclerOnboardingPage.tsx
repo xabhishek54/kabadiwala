@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { registerRecycler } from '../../data/remote/apiClient';
+import { registerRecycler, loginUser } from '../../data/remote/apiClient';
 import { db } from '../../data/local/db';
 import { Building, Phone, ShieldCheck, MapPin, ArrowRight, CheckCircle2 } from 'lucide-react';
 
@@ -59,6 +59,9 @@ export const RecyclerOnboardingPage: React.FC = () => {
         offered_rates: rates,
         materials_accepted: Object.keys(rates),
       });
+
+      const session = await loginUser(phone, 'recycler').catch(() => null);
+      if (session?.access_token) localStorage.setItem('kabadiwala_access_token', session.access_token);
 
       const rid = response.recycler_id || `rec-${Date.now()}`;
       const userObj = {

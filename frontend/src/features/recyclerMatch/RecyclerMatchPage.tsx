@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db, type LocalMaterial, type LocalTransaction } from '../../data/local/db';
 import { fetchRecyclerMatches, fetchRegisteredRecyclers, matchLotWithRecycler } from '../../data/remote/apiClient';
+import { LocationPickerModal } from '../../components/LocationPickerModal';
 import {
   Search, MapPin, Star, ArrowLeft,
   Truck, Zap, ChevronDown, ChevronUp, Phone, Factory,
-  ShieldCheck, Calendar, Building, X, Check, AlertTriangle
+  ShieldCheck, Calendar, Building, X, Check
 } from 'lucide-react';
 
 interface RecyclerDisplay {
@@ -27,6 +28,16 @@ interface RecyclerDisplay {
   avatarBg?: string;
   offered_rates?: Record<string, number>;
 }
+
+const materialLabel = (category: string) => ({
+  PCB: 'PCB',
+  BATTERY: 'Battery',
+  CABLE: 'Cable',
+  LCD_PANEL: 'LCD',
+  CRT: 'CRT',
+  MOTOR_MAGNET: 'Motor',
+  MIXED_PLASTIC: 'Plastic',
+}[category] || category.replaceAll('_', ' '));
 
 const NETWORK_FALLBACK_RECYCLERS = [
   {
@@ -252,12 +263,30 @@ export const RecyclerMatchPage: React.FC = () => {
   });
 
   const [selectedMatchOffer, setSelectedMatchOffer] = useState<RecyclerDisplay | null>(null);
+  const [selectedRecyclerInfo, setSelectedRecyclerInfo] = useState<RecyclerDisplay | null>(null);
   const [pickupDate, setPickupDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [pickupExactTime, setPickupExactTime] = useState<string>('14:30');
   const [pickupWindow, setPickupWindow] = useState<'morning' | 'afternoon' | 'evening'>('afternoon');
+  const [pickupAddress, setPickupAddress] = useState<string>('Wakad, Pune');
+  const [pickupLat, setPickupLat] = useState<number>(18.5204);
+  const [pickupLng, setPickupLng] = useState<number>(73.8567);
+  const [showLocationPicker, setShowLocationPicker] = useState<boolean>(false);
   const [isSubmittingMatch, setIsSubmittingMatch] = useState<boolean>(false);
 
+  useEffect(() => {
+    if (material) {
+      setPickupAddress(material.collection_address || 'Wakad, Pune');
+      setPickupLat(material.collection_lat || 18.5204);
+      setPickupLng(material.collection_lng || 73.8567);
+    }
+  }, [material]);
+
   const handleSelectRecycler = (rec: RecyclerDisplay) => {
-    setSelectedMatchOffer(rec);
+    if (hasValidLot) {
+      setSelectedMatchOffer(rec);
+    } else {
+      setSelectedRecyclerInfo(rec);
+    }
   };
 
   const confirmMatchAndSchedule = async () => {
@@ -316,11 +345,20 @@ export const RecyclerMatchPage: React.FC = () => {
       payment_method: 'upi',
       payment_status: 'unpaid',
       pickup_scheduled_date: pickupDate,
+      pickup_exact_time: pickupExactTime,
       pickup_window: pickupWindow,
+      collection_address: pickupAddress,
+      collection_lat: pickupLat,
+      collection_lng: pickupLng,
       created_at: mat.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
     await db.transactions.put(tx);
+    await db.materials.update(targetLotId, {
+      collection_address: pickupAddress,
+      collection_lat: pickupLat,
+      collection_lng: pickupLng,
+    } as any);
 
     try {
       await matchLotWithRecycler(targetLotId, rec.recycler_id, rec.estimated_payout);
@@ -340,20 +378,6 @@ export const RecyclerMatchPage: React.FC = () => {
   return (
     <div className="pb-24 pt-4 px-4 sm:px-6 md:px-8 max-w-7xl mx-auto space-y-4 font-sans text-stone-900">
       
-      {/* No-lot warning banner */}
-      {!loading && !hasValidLot && (
-        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex items-start gap-3">
-          <AlertTriangle size={20} className="text-amber-600 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-extrabold text-amber-900">No product selected</p>
-            <p className="text-xs text-amber-800 mt-0.5">
-              You need to create a lot first before matching with a recycler.
-              Go to <strong>Add Lots</strong> → upload a photo → complete the lot, then come back here.
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* Top Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white rounded-3xl p-4 sm:p-5 border border-stone-200/80 shadow-xs">
         <div className="flex items-center gap-3">
@@ -371,7 +395,7 @@ export const RecyclerMatchPage: React.FC = () => {
                 <MapPin size={12} className="text-[#16A34A]" />
                 {district} District & Surrounding Network
               </span>
-              <span>• {recyclersList.length} Facilities Available</span>
+              <span>• {recyclersList.length} Facilities Available{hasValidLot ? ' for this lot' : ''}</span>
             </div>
           </div>
         </div>
@@ -481,17 +505,28 @@ export const RecyclerMatchPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Buying Rate & Payout Row */}
+                  {/* Compact material coverage summary */}
                   <div className="flex items-center justify-between bg-stone-50 border border-stone-200/60 rounded-xl p-2 text-xs">
-                    <div>
-                      <span className="text-[10px] text-stone-400 font-medium block">Rate</span>
-                      <span className="font-black text-stone-900 text-xs">₹{rec.rate_per_kg}/kg</span>
-                    </div>
-
-                    <div className="text-right">
-                      <span className="text-[10px] text-emerald-700 font-bold block">Est. Payout</span>
-                      <span className="font-black text-[#16A34A] text-xs">₹{rec.estimated_payout.toLocaleString('en-IN')}</span>
-                    </div>
+                    {hasValidLot ? (
+                      <>
+                        <div>
+                          <span className="text-[10px] text-stone-400 font-medium block">Lot rate</span>
+                          <span className="font-black text-stone-900 text-xs">₹{rec.rate_per_kg}/kg</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] text-emerald-700 font-bold block">Est. Payout</span>
+                          <span className="font-black text-[#16A34A] text-xs">₹{rec.estimated_payout.toLocaleString('en-IN')}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="min-w-0">
+                        <span className="text-[10px] text-stone-400 font-medium block">Buys these materials</span>
+                        <span className="font-black text-stone-900 text-xs">
+                          {Object.keys(rec.offered_rates || {}).slice(0, 4).map(materialLabel).join(' · ')}
+                          {Object.keys(rec.offered_rates || {}).length > 4 ? ' · More' : ''}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Why Recommended Pill Tags */}
@@ -514,11 +549,9 @@ export const RecyclerMatchPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleSelectRecycler(rec)}
-                    disabled={!hasValidLot}
-                    title={!hasValidLot ? 'Create a lot first to match with a recycler' : undefined}
-                    className="bg-[#16A34A] hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs px-4 py-1.5 rounded-xl shadow-xs transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                    className="bg-[#16A34A] hover:bg-emerald-700 text-white font-bold text-xs px-4 py-1.5 rounded-xl shadow-xs transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
                   >
-                    <span>Select</span>
+                    <span>{hasValidLot ? 'Select' : 'View details'}</span>
                     <Zap size={12} />
                   </button>
                 </div>
@@ -541,28 +574,66 @@ export const RecyclerMatchPage: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Offered Rates Matrix */}
-                    {rec.offered_rates && (
-                      <div className="space-y-1">
-                        <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider px-0.5">
-                          Offered Category Buying Rates
-                        </div>
-                        <div className="grid grid-cols-2 gap-1 text-[11px]">
-                          {Object.entries(rec.offered_rates).map(([cat, rVal]) => (
-                            <div key={cat} className="flex items-center justify-between bg-white p-1.5 rounded-lg border border-stone-200/60">
-                              <span className="font-bold text-stone-700 text-[10px]">{cat}:</span>
-                              <span className="font-black text-[#16A34A] text-[11px]">₹{rVal}/kg</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    <p className="text-[10px] text-stone-500">Open View details to compare rates for every material this facility accepts.</p>
 
                   </div>
                 )}
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Recycler information modal for directory browsing */}
+      {selectedRecyclerInfo && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl border border-stone-200 shadow-2xl p-5 sm:p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-[#16A34A] flex items-center justify-center font-bold"><ShieldCheck size={18} /></div>
+                <div>
+                  <h3 className="font-extrabold text-stone-900 text-sm sm:text-base">Recycler Information</h3>
+                  <p className="text-[11px] text-stone-500">Contact this facility directly</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setSelectedRecyclerInfo(null)} className="p-1.5 rounded-full hover:bg-stone-100 text-stone-400 cursor-pointer"><X size={18} /></button>
+            </div>
+
+            <div className="bg-stone-50 border border-stone-200/80 rounded-2xl p-3.5 space-y-2">
+              <h4 className="font-bold text-stone-900 text-sm">{selectedRecyclerInfo.name}</h4>
+              <div className="flex items-center gap-1 text-[11px] text-emerald-700 font-semibold"><ShieldCheck size={13} /> MPCB Ref: {selectedRecyclerInfo.authorization_ref_no}</div>
+              <div className="grid grid-cols-2 gap-2 pt-2 text-[11px] text-stone-600 border-t border-stone-200/50">
+                <div className="flex items-center gap-1.5"><Building size={13} className="text-stone-400" /><span>{selectedRecyclerInfo.location} ({selectedRecyclerInfo.distance_km} km)</span></div>
+                <div className="flex items-center gap-1.5"><Phone size={13} className="text-emerald-600" /><span>{selectedRecyclerInfo.phone}</span></div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs font-extrabold text-stone-800">
+                <span className="flex items-center gap-1.5"><MapPin size={14} className="text-[#16A34A]" /> Pickup location</span>
+                <button type="button" onClick={() => setShowLocationPicker(true)} className="text-[10px] font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer">Change</button>
+              </div>
+              <div className="bg-stone-50 border border-stone-200 rounded-xl p-2.5 text-xs font-semibold text-stone-800 truncate">{pickupAddress}</div>
+            </div>
+
+            <div className="bg-emerald-50/60 border border-emerald-200/60 rounded-2xl p-3 text-xs text-stone-700 space-y-1.5">
+              <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Buying rates by material</div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {Object.entries(selectedRecyclerInfo.offered_rates || {}).map(([category, rate]) => (
+                  <div key={category} className="flex items-center justify-between bg-white p-1.5 rounded-lg border border-stone-200/60">
+                    <span className="font-bold text-stone-700 text-[10px]">{materialLabel(category)}</span>
+                    <strong className="text-emerald-700 text-[11px]">₹{rate}/kg</strong>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between pt-1"><span>Service</span><strong>{selectedRecyclerInfo.pickup_available ? 'Pickup available' : 'Drop-off only'}</strong></div>
+            </div>
+
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setSelectedRecyclerInfo(null)} className="flex-1 py-2.5 rounded-xl border border-stone-300 text-stone-700 font-bold text-xs cursor-pointer hover:bg-stone-50">Close</button>
+              <a href={`tel:${selectedRecyclerInfo.phone}`} className="flex-1 bg-[#16A34A] hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1">Call recycler</a>
+            </div>
+          </div>
         </div>
       )}
 
@@ -686,6 +757,22 @@ export const RecyclerMatchPage: React.FC = () => {
                   </button>
                 ))}
               </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <label className="text-[10px] font-bold text-stone-400 uppercase">
+                  Exact time
+                  <input
+                    type="time"
+                    value={pickupExactTime}
+                    onChange={e => setPickupExactTime(e.target.value)}
+                    className="mt-1 w-full p-2 rounded-xl border border-stone-200 bg-stone-50 text-xs font-bold text-stone-800"
+                  />
+                </label>
+                <div className="text-[10px] font-bold text-stone-400 uppercase">
+                  Time window
+                  <div className="mt-1 p-2 rounded-xl border border-stone-200 bg-stone-50 text-xs font-bold text-stone-800 capitalize">{pickupWindow}</div>
+                </div>
+              </div>
             </div>
 
             {/* Submit CTA */}
@@ -717,6 +804,19 @@ export const RecyclerMatchPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      <LocationPickerModal
+        isOpen={showLocationPicker}
+        onClose={() => setShowLocationPicker(false)}
+        onSelectLocation={(lat, lng, address) => {
+          setPickupLat(lat);
+          setPickupLng(lng);
+          setPickupAddress(address);
+        }}
+        initialLat={pickupLat}
+        initialLng={pickupLng}
+        title="Choose pickup location"
+      />
     </div>
   );
 };
