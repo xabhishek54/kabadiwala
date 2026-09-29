@@ -17,6 +17,8 @@ services:
         generateValue: true
       - key: ENVIRONMENT
         value: production
+      - key: PYTHON_VERSION
+        value: 3.11.9
     healthCheckPath: /
     plan: free
 
