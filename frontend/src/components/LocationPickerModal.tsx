@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MapPin, Navigation, Check, X, Search, RefreshCw } from 'lucide-react';
+import { LeafletMap } from './LeafletMap';
 
 interface LocationPickerModalProps {
   isOpen: boolean;
@@ -97,6 +98,13 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
     }
   };
 
+  /** Called when user drags the pin on the map */
+  const handlePinDrag = (newLat: number, newLng: number) => {
+    setLat(newLat);
+    setLng(newLng);
+    reverseGeocode(newLat, newLng);
+  };
+
   const handleConfirm = () => {
     onSelectLocation(lat, lng, address, locality);
     onClose();
@@ -104,13 +112,9 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
 
   if (!isOpen) return null;
 
-  // OpenStreetMap Tile URL bounding box for embed
-  const bbox = `${lng - 0.01},${lat - 0.01},${lng + 0.01},${lat + 0.01}`;
-  const osmEmbedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lng}`;
-
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl space-y-3 p-5 border border-stone-200">
+      <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl space-y-3 p-5 border border-stone-200 max-h-[92vh] overflow-y-auto">
         
         {/* Header */}
         <div className="flex items-center justify-between border-b border-stone-100 pb-3">
@@ -146,39 +150,30 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
           </button>
         </form>
 
-        {/* Live OpenStreetMap Tile View */}
-        <div className="relative rounded-2xl overflow-hidden border border-stone-200 h-56 bg-stone-100 shadow-inner">
-          <iframe
-            title="OpenStreetMap Location Picker"
-            width="100%"
-            height="100%"
-            frameBorder="0"
-            scrolling="no"
-            src={osmEmbedUrl}
-            className="w-full h-full"
-          />
+        {/* Hint text */}
+        <p className="text-[11px] text-stone-400 font-medium -mt-1">
+          🔵 Drag the green pin on the map to fine-tune your exact location
+        </p>
 
-          {/* Map Pin Overlay */}
-          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-            <div className="flex flex-col items-center -mt-6">
-              <div className="bg-[#16A34A] text-white p-2 rounded-full shadow-lg border-2 border-white animate-bounce">
-                <MapPin size={22} className="fill-white text-[#16A34A]" />
-              </div>
-              <div className="w-3 h-1.5 bg-black/40 rounded-full blur-[2px]" />
-            </div>
-          </div>
+        {/* Interactive Leaflet Map */}
+        <LeafletMap
+          lat={lat}
+          lng={lng}
+          height="h-56"
+          interactive={true}
+          onLocationChange={handlePinDrag}
+        />
 
-          {/* Use Current GPS Button */}
-          <button
-            type="button"
-            onClick={handleGetCurrentGPS}
-            disabled={isLocating}
-            className="absolute bottom-3 right-3 bg-white/90 backdrop-blur-md text-stone-900 font-extrabold text-xs px-3 py-2 rounded-full shadow-lg border border-stone-200 flex items-center gap-1.5 hover:bg-white transition-all active:scale-95"
-          >
-            <Navigation size={14} className={isLocating ? 'animate-spin text-[#16A34A]' : 'text-[#16A34A]'} />
-            <span>{isLocating ? 'Locating...' : 'Use My GPS Location'}</span>
-          </button>
-        </div>
+        {/* GPS Button (overlaid as a floating action within map area below) */}
+        <button
+          type="button"
+          onClick={handleGetCurrentGPS}
+          disabled={isLocating}
+          className="w-full py-2.5 px-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-2xl text-xs font-extrabold flex items-center justify-center gap-2 transition-colors"
+        >
+          <Navigation size={14} className={isLocating ? 'animate-spin text-[#16A34A]' : 'text-[#16A34A]'} />
+          <span>{isLocating ? 'Locating...' : 'Use My GPS Location'}</span>
+        </button>
 
         {/* Selected Coordinates & Geocoded Address Card */}
         <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 space-y-1">
@@ -187,7 +182,7 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
             <span className="font-mono text-[10px] text-emerald-700 font-bold">{lat.toFixed(4)}, {lng.toFixed(4)}</span>
           </div>
 
-          <div className="text-xs font-bold text-stone-800 truncate">
+          <div className="text-xs font-bold text-stone-800 line-clamp-2">
             {isGeocoding ? (
               <span className="flex items-center gap-1 text-stone-500 italic">
                 <RefreshCw size={12} className="animate-spin" /> Fetching address name...

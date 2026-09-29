@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { MapPin, Search, Crosshair, Check, X } from 'lucide-react';
 import { reverseGeocode } from '../utils/geoUtils';
+import { LeafletMap } from './LeafletMap';
 
 interface LocationMapPickerProps {
   initialAddress?: string;
@@ -116,34 +117,22 @@ export const LocationMapPicker: React.FC<LocationMapPickerProps> = ({
           <span>{isLocating ? 'Locating device...' : 'Use My Current GPS Location'}</span>
         </button>
 
-        {/* Interactive Map Visual Preview container */}
-        <div className="relative h-44 w-full bg-stone-100 border border-stone-200 rounded-2xl overflow-hidden shadow-inner group">
-          {/* Static OSM map image tile centered on coords */}
-          <img
-            src={`https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=14&size=400x200&maptype=mapnik`}
-            alt="Interactive map location"
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              // Fallback SVG map background if offline tile failed
-              (e.target as HTMLElement).style.display = 'none';
-            }}
-          />
-
-          {/* Centered Map Pin overlay */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="relative flex flex-col items-center animate-bounce">
-              <div className="w-8 h-8 rounded-full bg-[#16A34A] text-white flex items-center justify-center shadow-lg border-2 border-white">
-                <MapPin size={18} />
-              </div>
-              <div className="w-2 h-2 rounded-full bg-black/40 blur-xs mt-0.5" />
-            </div>
-          </div>
-
-          {/* Coordinates overlay pill */}
-          <div className="absolute bottom-2 left-2 bg-stone-900/80 backdrop-blur-xs text-white text-[10px] font-mono px-2 py-1 rounded-lg">
-            {lat.toFixed(4)}, {lng.toFixed(4)}
-          </div>
-        </div>
+        {/* Interactive Leaflet Map */}
+        <LeafletMap
+          lat={lat}
+          lng={lng}
+          height="h-44"
+          interactive={true}
+          onLocationChange={async (newLat, newLng) => {
+            setLat(newLat);
+            setLng(newLng);
+            const addr = await reverseGeocode(newLat, newLng);
+            if (addr) setAddressInput(addr);
+          }}
+        />
+        <p className="text-[10px] text-stone-400 font-medium">
+          🔵 Drag the green pin to fine-tune your exact pickup point
+        </p>
 
         {/* Area Quick Presets */}
         <div className="space-y-1.5">

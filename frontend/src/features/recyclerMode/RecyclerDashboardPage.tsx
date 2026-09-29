@@ -8,6 +8,7 @@ import {
 import { db } from '../../data/local/db';
 import { API_BASE_URL } from '../../data/remote/apiClient';
 import { NotificationBell } from '../../components/NotificationBell';
+import { LeafletMap } from '../../components/LeafletMap';
 
 interface AdminLot {
   lot_id: string;
@@ -25,6 +26,8 @@ interface AdminLot {
   created_at?: string;
   recycler_id?: string;
   collection_address?: string;
+  lat?: number;
+  lng?: number;
   pickup_scheduled_date?: string;
   pickup_exact_time?: string;
   pickup_window?: string;
@@ -599,19 +602,13 @@ export const RecyclerDashboardPage: React.FC = () => {
                 {selectedDetailLot.collection_address || 'Wakad, Pune, Maharashtra'}
               </div>
 
-              {/* Map Preview Image Tile */}
-              <div className="relative h-32 w-full bg-stone-100 border border-stone-200 rounded-2xl overflow-hidden">
-                <img
-                  src={`https://staticmap.openstreetmap.de/staticmap.php?center=18.5204,73.8567&zoom=14&size=400x160&maptype=mapnik`}
-                  alt="Location Map Preview"
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="w-7 h-7 rounded-full bg-[#16A34A] text-white flex items-center justify-center shadow-lg border-2 border-white">
-                    <MapPin size={15} />
-                  </div>
-                </div>
-              </div>
+              {/* Map Preview — Leaflet */}
+              <LeafletMap
+                lat={selectedDetailLot.lat ?? 18.5204}
+                lng={selectedDetailLot.lng ?? 73.8567}
+                height="h-32"
+                interactive={false}
+              />
             </div>
 
             {/* Collector Contact info */}
