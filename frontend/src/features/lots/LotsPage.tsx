@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../data/local/db';
 import { fetchCollectorLedger } from '../../data/remote/apiClient';
@@ -32,6 +33,7 @@ export interface LotItemDisplay {
 
 export const LotsPage: React.FC = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'All' | 'Active' | 'Matched' | 'Completed'>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [backendItems, setBackendItems] = useState<any[]>([]);
@@ -89,16 +91,16 @@ export const LotsPage: React.FC = () => {
     );
 
     let status: LotItemDisplay['status'] = 'draft';
-    let statusLabel = 'Draft';
+    let statusLabel = t('lots.statusDraft');
     let statusColor = 'bg-amber-50 text-amber-800 border border-amber-200/70';
 
     if (isPaid) {
       status = 'paid';
-      statusLabel = 'Paid ✓';
+      statusLabel = t('lots.statusPaid');
       statusColor = 'bg-emerald-50 text-emerald-800 border border-emerald-200/70';
     } else if (isMatched) {
       status = 'matched';
-      statusLabel = 'Matched';
+      statusLabel = t('lots.statusMatched');
       statusColor = 'bg-blue-50 text-blue-800 border border-blue-200/70';
     }
 
@@ -162,7 +164,7 @@ export const LotsPage: React.FC = () => {
         weight: bItem.weight_kg || 5,
         price: bItem.amount || 0,
         status,
-        statusLabel: isPaid ? 'Paid ✓' : isMatched ? 'Matched' : 'Draft',
+        statusLabel: isPaid ? t('lots.statusPaid') : isMatched ? t('lots.statusMatched') : t('lots.statusDraft'),
         statusColor: isPaid ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/70' : isMatched ? 'bg-blue-50 text-blue-800 border border-blue-200/70' : 'bg-amber-50 text-amber-800 border border-amber-200/70',
         date: bItem.created_at ? new Date(bItem.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'Today',
         recyclerName: recName,
@@ -200,7 +202,7 @@ export const LotsPage: React.FC = () => {
           >
             <ArrowLeft size={18} />
           </button>
-          <h1 className="text-base font-black text-stone-900 tracking-tight">My Scrap Lots</h1>
+          <h1 className="text-base font-black text-stone-900 tracking-tight">{t('lots.title')}</h1>
         </div>
 
         <div className="flex items-center gap-2">
@@ -211,7 +213,7 @@ export const LotsPage: React.FC = () => {
             className="bg-[#16A34A] hover:bg-emerald-700 text-white font-bold text-xs px-3 py-1.5 rounded-full shadow-xs flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
           >
             <Plus size={13} />
-            <span>New Lot</span>
+            <span>{t('lots.newLot')}</span>
           </button>
         </div>
       </div>
@@ -222,7 +224,7 @@ export const LotsPage: React.FC = () => {
           <Search size={15} className="absolute left-3.5 top-3 text-stone-400" />
           <input
             type="text"
-            placeholder="Search lot ID or material title..."
+            placeholder={t('lots.searchPlaceholder')}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-4 py-2 bg-white border border-stone-200/80 rounded-2xl text-xs font-semibold text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] shadow-xs"
@@ -232,10 +234,10 @@ export const LotsPage: React.FC = () => {
         {/* Tab Filters */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide">
           {([
-            ['All', 'All'],
-            ['Pending', 'Active'],
-            ['Matched', 'Matched'],
-            ['Done', 'Completed'],
+            [t('lots.filterAll'), 'All'],
+            [t('lots.filterPending'), 'Active'],
+            [t('lots.filterMatched'), 'Matched'],
+            [t('lots.filterDone'), 'Completed'],
           ] as const).map(([label, tab]) => {
             const isActive = activeTab === tab;
             return (
@@ -266,15 +268,15 @@ export const LotsPage: React.FC = () => {
         <div className="bg-white rounded-3xl p-8 text-center border border-stone-200 space-y-3">
           <Package size={36} className="mx-auto text-stone-300" />
           <div>
-            <h3 className="font-extrabold text-stone-800 text-sm">No Lots Found</h3>
-            <p className="text-xs text-stone-500 mt-0.5">Create a new scrap lot to estimate market value and match with authorized recyclers.</p>
+            <h3 className="font-extrabold text-stone-800 text-sm">{t('lots.noLotsTitle')}</h3>
+            <p className="text-xs text-stone-500 mt-0.5">{t('lots.noLotsDesc')}</p>
           </div>
           <button
             type="button"
             onClick={() => navigate('/create-lot')}
             className="bg-[#16A34A] hover:bg-emerald-700 text-white font-bold text-xs px-5 py-2.5 rounded-2xl shadow-xs"
           >
-            + Create First Lot
+            {t('lots.createFirst')}
           </button>
         </div>
       ) : (
@@ -322,10 +324,10 @@ export const LotsPage: React.FC = () => {
                 {/* Ultra-compact Metrics Line */}
                 <div className="bg-stone-50 border border-stone-200/60 rounded-xl p-2 flex items-center justify-between text-xs font-semibold">
                   <div className="text-[11px] text-stone-600">
-                    <span className="text-stone-400">Weight:</span> <strong className="text-stone-900 font-black">{lot.weight} kg</strong>
+                    <span className="text-stone-400">{t('lots.weightLabel')}</span> <strong className="text-stone-900 font-black">{lot.weight} kg</strong>
                   </div>
                   <div className="text-[11px] text-right">
-                    <span className="text-stone-400">Est. Payout:</span> <strong className="text-[#16A34A] font-black text-xs">₹{lot.price.toLocaleString('en-IN')}</strong>
+                    <span className="text-stone-400">{t('lots.estPayout')}</span> <strong className="text-[#16A34A] font-black text-xs">₹{lot.price.toLocaleString('en-IN')}</strong>
                   </div>
                 </div>
 
@@ -351,7 +353,7 @@ export const LotsPage: React.FC = () => {
 
                         {lot.pickupScheduledDate && (
                           <div className="text-[10px] text-stone-600 font-semibold flex items-center justify-between pt-0.5 border-t border-emerald-200/50">
-                            <span>📅 Pickup: <strong className="text-stone-900">{lot.pickupScheduledDate}</strong></span>
+                            <span>📅 {t('lots.pickupLabel')} <strong className="text-stone-900">{lot.pickupScheduledDate}</strong></span>
                             <span className="capitalize text-emerald-800 font-bold">{lot.pickupWindow || 'Afternoon'}</span>
                           </div>
                         )}
@@ -360,7 +362,7 @@ export const LotsPage: React.FC = () => {
 
                     {lot.collectionAddress && (
                       <div className="text-[10px] text-stone-500 font-medium px-1 truncate flex items-center gap-1">
-                        <span>📍 Collection:</span>
+                        <span>📍 {t('lots.collectionLabel')}</span>
                         <span className="text-stone-700 font-semibold truncate">{lot.collectionAddress}</span>
                       </div>
                     )}
@@ -382,7 +384,7 @@ export const LotsPage: React.FC = () => {
                             className="flex-1 bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold text-[11px] py-1.5 px-2 rounded-xl flex items-center justify-center gap-1 shadow-xs transition-all cursor-pointer"
                           >
                             <QrCode size={13} />
-                            <span>Digital Handover QR</span>
+                            <span>{t('lots.digitalHandover')}</span>
                           </button>
                           <button
                             type="button"
@@ -394,7 +396,7 @@ export const LotsPage: React.FC = () => {
                             title="Edit schedule or location"
                           >
                             <Edit3 size={12} />
-                            <span>Edit</span>
+                            <span>{t('lots.edit')}</span>
                           </button>
                         </div>
                       ) : lot.status === 'draft' ? (
@@ -420,7 +422,7 @@ export const LotsPage: React.FC = () => {
                             title="Edit schedule or location"
                           >
                             <Edit3 size={12} />
-                            <span>Edit</span>
+                            <span>{t('lots.edit')}</span>
                           </button>
                         </div>
                       ) : (
@@ -433,7 +435,7 @@ export const LotsPage: React.FC = () => {
                           className="w-full bg-stone-100 hover:bg-stone-200 text-stone-800 font-extrabold text-[11px] py-1.5 px-2.5 rounded-xl flex items-center justify-center gap-1 transition-all cursor-pointer"
                         >
                           <ShieldCheck size={13} className="text-emerald-600" />
-                          <span>View Digital Receipt</span>
+                          <span>{t('lots.viewReceipt')}</span>
                         </button>
                       )}
                     </div>

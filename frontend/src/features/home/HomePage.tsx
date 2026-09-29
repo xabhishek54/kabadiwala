@@ -159,7 +159,7 @@ export const HomePage: React.FC = () => {
       {/* DESKTOP TOP HEADER BAR */}
       <div className="hidden md:flex items-center justify-between">
         <h1 className="text-2xl font-black text-stone-900 tracking-tight">
-          👋 Namaste, {firstName}!
+          👋 {t('home.greeting', { name: firstName })}
         </h1>
 
         <div className="flex items-center gap-3">
@@ -181,11 +181,11 @@ export const HomePage: React.FC = () => {
             {showNotifications && (
               <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl p-3 border border-stone-200 shadow-lg z-50 text-xs space-y-2">
                 <div className="font-bold text-stone-900 border-b pb-1.5 flex justify-between items-center">
-                  <span>Notifications</span>
-                  <button onClick={() => setShowNotifications(false)} className="text-[10px] text-stone-400">Close</button>
+                  <span>{t('home.notifications')}</span>
+                  <button onClick={() => setShowNotifications(false)} className="text-[10px] text-stone-400">{t('home.close')}</button>
                 </div>
                 <div className="p-2 bg-emerald-50 rounded-xl text-emerald-800 font-medium text-[11px]">
-                  ✓ System operational. Live district price updates active.
+                  ✓ {t('home.systemOnline')}
                 </div>
               </div>
             )}
@@ -200,7 +200,7 @@ export const HomePage: React.FC = () => {
       {/* MOBILE HEADER */}
       <div className="md:hidden">
         <h1 className="text-xl font-black text-stone-900 tracking-tight">
-          👋 Namaste, {firstName}!
+          👋 {t('home.greeting', { name: firstName })}
         </h1>
       </div>
 
@@ -212,7 +212,7 @@ export const HomePage: React.FC = () => {
             <Package size={20} />
           </div>
           <div>
-            <div className="text-xs text-stone-500 font-semibold">Total Intake</div>
+            <div className="text-xs text-stone-500 font-semibold">{t('home.totalIntake')}</div>
             <div className="text-2xl font-black text-stone-900">{displayTotalWeight}</div>
           </div>
         </div>
@@ -223,7 +223,7 @@ export const HomePage: React.FC = () => {
             <IndianRupee size={20} />
           </div>
           <div>
-            <div className="text-xs text-stone-500 font-semibold">Disbursed Payouts</div>
+            <div className="text-xs text-stone-500 font-semibold">{t('home.disbursedPayouts')}</div>
             <div className="text-2xl font-black text-stone-900">{displayTotalPayouts}</div>
           </div>
         </div>
@@ -234,7 +234,7 @@ export const HomePage: React.FC = () => {
             <Clock size={20} />
           </div>
           <div>
-            <div className="text-xs text-stone-500 font-semibold">Active Lots</div>
+            <div className="text-xs text-stone-500 font-semibold">{t('home.activeLots')}</div>
             <div className="text-2xl font-black text-stone-900">{displayActiveLots}</div>
           </div>
         </div>
@@ -245,7 +245,7 @@ export const HomePage: React.FC = () => {
             <CheckCircle2 size={20} />
           </div>
           <div>
-            <div className="text-xs text-stone-500 font-semibold">Authorized Recyclers</div>
+            <div className="text-xs text-stone-500 font-semibold">{t('home.authorizedRecyclers')}</div>
             <div className="text-2xl font-black text-stone-900">{formatVernacularNumber(authorizedCount, currentLang)}</div>
           </div>
         </div>
@@ -295,7 +295,7 @@ export const HomePage: React.FC = () => {
           </div>
           <div>
             <div className="text-base font-black leading-tight">{t('lotCreation.title')}</div>
-            <div className="text-xs text-white/80 font-medium mt-0.5">Photo • Identify • Weigh</div>
+            <div className="text-xs text-white/80 font-medium mt-0.5">{t('home.photoSubtitle')}</div>
           </div>
         </div>
 
@@ -363,18 +363,18 @@ export const HomePage: React.FC = () => {
           <div className="flex items-center justify-between">
             <h3 className="font-extrabold text-stone-900 text-base">{t('nav.lots')}</h3>
             <button type="button" onClick={() => navigate('/lots')} className="text-xs font-bold text-emerald-600 hover:underline">
-              View All
+              {t('home.viewAll')}
             </button>
           </div>
 
           <div className="space-y-3">
             {/* Table Header */}
             <div className="grid grid-cols-12 text-[11px] font-bold text-stone-400 uppercase tracking-wider pb-1 border-b border-stone-100">
-              <span className="col-span-2">Lot ID</span>
-              <span className="col-span-4">Material</span>
-              <span className="col-span-2">Weight</span>
-              <span className="col-span-2">Estimate</span>
-              <span className="col-span-2 text-right">Status</span>
+              <span className="col-span-2">{t('home.lotId')}</span>
+              <span className="col-span-4">{t('home.material')}</span>
+              <span className="col-span-2">{t('home.weight')}</span>
+              <span className="col-span-2">{t('home.estimate')}</span>
+              <span className="col-span-2 text-right">{t('home.status')}</span>
             </div>
 
             {/* Rows */}
@@ -409,7 +409,7 @@ export const HomePage: React.FC = () => {
           <div className="flex items-center justify-between">
             <h3 className="font-extrabold text-stone-900 text-base">{t('match.findRecyclers')}</h3>
             <button type="button" onClick={() => navigate('/recyclers')} className="text-xs font-bold text-emerald-600 hover:underline">
-              View All
+              {t('home.viewAll')}
             </button>
           </div>
 
@@ -426,7 +426,7 @@ export const HomePage: React.FC = () => {
                       <span className="w-3.5 h-3.5 rounded-full bg-blue-500 text-white flex items-center justify-center text-[9px] font-bold" title="Verified">✓</span>
                     </div>
                     <div className="text-[11px] text-stone-500 font-medium">
-                      {rec.distance} • Authorized
+                      {rec.distance} • {t('home.authorized')}
                     </div>
                     <div className="flex items-center gap-1 text-[11px] font-bold text-amber-700 mt-0.5">
                       <Star size={11} className="fill-amber-400 text-amber-400" />
@@ -440,7 +440,7 @@ export const HomePage: React.FC = () => {
                   onClick={() => navigate('/recyclers')}
                   className="bg-[#16A34A] hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
                 >
-                  Select
+                  {t('home.select')}
                 </button>
               </div>
             ))}

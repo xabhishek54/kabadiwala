@@ -138,7 +138,7 @@ export const Navigation: React.FC = () => {
 
       {/* MOBILE BOTTOM NAV */}
       <nav className="bottom-nav">
-        <div className="grid grid-cols-4 h-full w-full max-w-md mx-auto items-center">
+        <div className="grid grid-cols-5 h-full w-full max-w-md mx-auto items-center">
           {bottomTabs.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
@@ -158,6 +158,25 @@ export const Navigation: React.FC = () => {
               )}
             </NavLink>
           ))}
+          {/* Language Toggle Button */}
+          <button
+            type="button"
+            onClick={() => {
+              const langs = ['hi', 'en', 'mr'];
+              const currentIdx = langs.indexOf(i18n.language);
+              const nextLang = langs[(currentIdx + 1) % langs.length];
+              changeLanguage(nextLang);
+            }}
+            className="flex flex-col items-center justify-center py-1.5 text-stone-400 hover:text-stone-600 transition-colors cursor-pointer"
+            title={t('nav.language')}
+          >
+            <span className="text-xl leading-none">
+              {i18n.language === 'hi' ? '🇮🇳' : i18n.language === 'mr' ? '🪔' : '🌐'}
+            </span>
+            <span className="text-[10px] mt-0.5 leading-none font-semibold">
+              {i18n.language === 'hi' ? 'हिंदी' : i18n.language === 'mr' ? 'मराठी' : 'EN'}
+            </span>
+          </button>
         </div>
       </nav>
     </>

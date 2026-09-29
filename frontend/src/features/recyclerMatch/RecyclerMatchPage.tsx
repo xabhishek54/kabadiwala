@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { db, type LocalMaterial, type LocalTransaction } from '../../data/local/db';
 import { fetchRecyclerMatches, fetchRegisteredRecyclers, matchLotWithRecycler } from '../../data/remote/apiClient';
 import { LocationPickerModal } from '../../components/LocationPickerModal';
@@ -123,6 +124,7 @@ function getCurrentCoordinates(): Promise<{ lat: number; lng: number }> {
 
 export const RecyclerMatchPage: React.FC = () => {
   const { lotId } = useParams<{ lotId?: string }>();
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   const [material, setMaterial] = useState<LocalMaterial | null>(null);
@@ -446,13 +448,13 @@ export const RecyclerMatchPage: React.FC = () => {
             <ArrowLeft size={18} />
           </button>
           <div>
-            <h1 className="text-xl sm:text-2xl font-black text-stone-900 tracking-tight">Find Verified Recyclers</h1>
+            <h1 className="text-xl sm:text-2xl font-black text-stone-900 tracking-tight">{t('recyclerMatch.pageTitle')}</h1>
             <div className="flex items-center gap-2 text-xs text-stone-500 font-medium mt-0.5">
               <span className="flex items-center gap-1 font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
                 <MapPin size={12} className="text-[#16A34A]" />
                 {district} District & Surrounding Network
               </span>
-              <span>• {recyclersList.length} Facilities Available{hasValidLot ? ' for this lot' : ''}</span>
+              <span>{recyclersList.length} {hasValidLot ? t('recyclerMatch.facilitiesForLot') : t('recyclerMatch.facilitiesAvailable')}</span>
             </div>
           </div>
         </div>
@@ -477,7 +479,7 @@ export const RecyclerMatchPage: React.FC = () => {
           <Search size={15} className="absolute left-3.5 top-3 text-stone-400" />
           <input
             type="text"
-            placeholder="Search facility name or district (e.g. Pune, Mumbai)..."
+            placeholder={t('recyclerMatch.searchPlaceholder')}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-4 py-2 bg-white border border-stone-200/80 rounded-2xl text-xs font-semibold text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] shadow-xs"
@@ -486,13 +488,15 @@ export const RecyclerMatchPage: React.FC = () => {
 
         {/* Filter Chips */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide">
-          {(['All', 'Verified', 'Pickup Available'] as const).map(f => {
-            const isActive = activeFilter === f;
+          {([t('recyclerMatch.filterAll'), t('recyclerMatch.filterVerified'), t('recyclerMatch.filterPickup')] as const).map((f, fIdx) => {
+            const filterKeys = ['All', 'Verified', 'Pickup Available'] as const;
+            const filterKey = filterKeys[fIdx];
+            const isActive = activeFilter === filterKey;
             return (
               <button
                 key={f}
                 type="button"
-                onClick={() => setActiveFilter(f)}
+                onClick={() => setActiveFilter(filterKey)}
                 className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                   isActive
                     ? 'bg-[#16A34A] text-white shadow-xs'
@@ -577,7 +581,7 @@ export const RecyclerMatchPage: React.FC = () => {
                       </>
                     ) : (
                       <div className="min-w-0">
-                        <span className="text-[10px] text-stone-400 font-medium block">Buys these materials</span>
+                        <span className="text-[10px] text-stone-400 font-medium block">{t('recyclerMatch.buysThese')}</span>
                         <span className="font-black text-stone-900 text-xs">
                           {Object.keys(rec.offered_rates || {}).slice(0, 4).map(materialLabel).join(' · ')}
                           {Object.keys(rec.offered_rates || {}).length > 4 ? ' · More' : ''}
@@ -600,7 +604,7 @@ export const RecyclerMatchPage: React.FC = () => {
                 <div className="flex items-center justify-between pt-2.5 mt-2 border-t border-stone-100">
                   <div className="flex items-center gap-1 text-[10px] text-stone-500 font-medium">
                     <Truck size={12} className={rec.pickup_available ? 'text-[#16A34A]' : 'text-stone-400'} />
-                    <span>{rec.pickup_available ? 'Pickup Available' : 'Drop-off'}</span>
+                    <span>{rec.pickup_available ? t('recyclerMatch.pickupAvailable') : t('recyclerMatch.dropOff')}</span>
                   </div>
 
                   <button
@@ -608,7 +612,7 @@ export const RecyclerMatchPage: React.FC = () => {
                     onClick={() => handleSelectRecycler(rec)}
                     className="bg-[#16A34A] hover:bg-emerald-700 text-white font-bold text-xs px-4 py-1.5 rounded-xl shadow-xs transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
                   >
-                    <span>{hasValidLot ? 'Select' : 'View details'}</span>
+                    <span>{hasValidLot ? t('recyclerMatch.select') : t('recyclerMatch.viewDetails')}</span>
                     <Zap size={12} />
                   </button>
                 </div>
@@ -619,11 +623,11 @@ export const RecyclerMatchPage: React.FC = () => {
                     
                     <div className="bg-stone-50 p-2.5 rounded-xl border border-stone-200/60 space-y-1.5 text-[11px]">
                       <div className="flex items-center justify-between text-stone-700">
-                        <span className="font-medium text-stone-500">License Ref:</span>
+                        <span className="font-medium text-stone-500">{t('recyclerMatch.licenseRef')}</span>
                         <span className="font-bold font-mono text-[10px] text-stone-900">{rec.authorization_ref_no}</span>
                       </div>
                       <div className="flex items-center justify-between text-stone-700">
-                        <span className="font-medium text-stone-500">Contact:</span>
+                        <span className="font-medium text-stone-500">{t('recyclerMatch.contact')}</span>
                         <span className="font-bold text-stone-900 flex items-center gap-1">
                           <Phone size={11} className="text-emerald-600" />
                           {rec.phone}
@@ -631,7 +635,7 @@ export const RecyclerMatchPage: React.FC = () => {
                       </div>
                     </div>
 
-                    <p className="text-[10px] text-stone-500">Open View details to compare rates for every material this facility accepts.</p>
+                    <p className="text-[10px] text-stone-500">{t('recyclerMatch.openViewDetails')}</p>
 
                   </div>
                 )}
@@ -649,8 +653,8 @@ export const RecyclerMatchPage: React.FC = () => {
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-emerald-100 text-[#16A34A] flex items-center justify-center font-bold"><ShieldCheck size={18} /></div>
                 <div>
-                  <h3 className="font-extrabold text-stone-900 text-sm sm:text-base">Recycler Information</h3>
-                  <p className="text-[11px] text-stone-500">Contact this facility directly</p>
+                  <h3 className="font-extrabold text-stone-900 text-sm sm:text-base">{t('recyclerMatch.recyclerInfoTitle')}</h3>
+                  <p className="text-[11px] text-stone-500">{t('recyclerMatch.contactFacility')}</p>
                 </div>
               </div>
               <button type="button" onClick={() => setSelectedRecyclerInfo(null)} className="p-1.5 rounded-full hover:bg-stone-100 text-stone-400 cursor-pointer"><X size={18} /></button>
@@ -674,7 +678,7 @@ export const RecyclerMatchPage: React.FC = () => {
             </div>
 
             <div className="bg-emerald-50/60 border border-emerald-200/60 rounded-2xl p-3 text-xs text-stone-700 space-y-1.5">
-              <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Buying rates by material</div>
+              <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">{t('recyclerMatch.buyingRates')}</div>
               <div className="grid grid-cols-2 gap-1.5">
                 {Object.entries(selectedRecyclerInfo.offered_rates || {}).map(([category, rate]) => (
                   <div key={category} className="flex items-center justify-between bg-white p-1.5 rounded-lg border border-stone-200/60">
@@ -683,12 +687,12 @@ export const RecyclerMatchPage: React.FC = () => {
                   </div>
                 ))}
               </div>
-              <div className="flex justify-between pt-1"><span>Service</span><strong>{selectedRecyclerInfo.pickup_available ? 'Pickup available' : 'Drop-off only'}</strong></div>
+              <div className="flex justify-between pt-1"><span>{t('recyclerMatch.service')}</span><strong>{selectedRecyclerInfo.pickup_available ? t('recyclerMatch.pickupService') : t('recyclerMatch.dropOffOnly')}</strong></div>
             </div>
 
             <div className="flex gap-2">
-              <button type="button" onClick={() => setSelectedRecyclerInfo(null)} className="flex-1 py-2.5 rounded-xl border border-stone-300 text-stone-700 font-bold text-xs cursor-pointer hover:bg-stone-50">Close</button>
-              <a href={`tel:${selectedRecyclerInfo.phone}`} className="flex-1 bg-[#16A34A] hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1">Call recycler</a>
+              <button type="button" onClick={() => setSelectedRecyclerInfo(null)} className="flex-1 py-2.5 rounded-xl border border-stone-300 text-stone-700 font-bold text-xs cursor-pointer hover:bg-stone-50">{t('recyclerMatch.close')}</button>
+              <a href={`tel:${selectedRecyclerInfo.phone}`} className="flex-1 bg-[#16A34A] hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1">{t('recyclerMatch.callRecycler')}</a>
             </div>
           </div>
         </div>
