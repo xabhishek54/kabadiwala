@@ -268,9 +268,12 @@ def get_seed_status(db: Session = Depends(get_db)):
     """Check if demo data is seeded (public, safe to call)."""
     collectors = db.query(_Collector).count()
     recyclers = db.query(Recycler).count()
+    from app.models.material import Material as _Material
+    lots = db.query(_Material).count()
     return {
         "collectors": collectors,
         "recyclers": recyclers,
+        "lots": lots,
         "seeded": collectors > 0 and recyclers > 0,
         "demo_phones": {
             "shop_owner": "9876543210",
@@ -285,20 +288,30 @@ def get_seed_status(db: Session = Depends(get_db)):
 
 @_seed_router.post("/seed-demo")
 def force_seed_demo(secret: str = "kabadiwala-demo-2024", db: Session = Depends(get_db)):
-    """Force-seed the demo accounts. Idempotent — safe to run multiple times."""
+    """Force-reseed the full demo dataset. Wipes existing data and re-seeds from scratch."""
     if secret != "kabadiwala-demo-2024":
         raise HTTPException(status_code=403, detail="Invalid seed secret")
+
     from app.seed import seed_database
     from app.models.recycler import Recycler as _Recycler
+    from app.models.material import Material as _Material
+    from app.models.transaction import Transaction as _Transaction
+    from app.models.traceability import TraceabilityEvent as _TraceabilityEvent
+    from app.models.price import PriceObservation as _PriceObservation
+    from app.database import Base, engine
 
-    # Delete existing seed data so we can re-seed cleanly
-    existing_recyclers = db.query(_Recycler).count()
-    if existing_recyclers > 0:
-        # Already seeded — just return status
-        collectors = db.query(_Collector).count()
-        return {"status": "already_seeded", "collectors": collectors, "recyclers": existing_recyclers}
+    # Wipe all tables and recreate so seed runs fresh
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
 
     seed_database(db)
+
     collectors = db.query(_Collector).count()
     recyclers = db.query(_Recycler).count()
-    return {"status": "seeded", "collectors": collectors, "recyclers": recyclers}
+    lots = db.query(_Material).count()
+    return {
+        "status": "reseeded",
+        "collectors": collectors,
+        "recyclers": recyclers,
+        "lots": lots,
+    }
