@@ -5,6 +5,10 @@ import { updateRecyclerRates } from '../../data/remote/apiClient';
 export const RecyclerRatesPage: React.FC = () => {
   const [recyclerId, setRecyclerId] = useState('rec-pune-001');
   const [recyclerName, setRecyclerName] = useState('EcoRecycle India');
+  const [error, setError] = useState('');
+  const [materialsAccepted, setMaterialsAccepted] = useState<string[]>([
+    'PCB', 'BATTERY', 'CABLE', 'LCD_PANEL', 'CRT', 'MOTOR_MAGNET', 'MIXED_PLASTIC',
+  ]);
 
   const [rates, setRates] = useState<Record<string, number>>({
     PCB: 260.0,
@@ -39,12 +43,25 @@ export const RecyclerRatesPage: React.FC = () => {
     let isMounted = true;
     const loadProfile = async () => {
       try {
+        const rawUser = typeof window !== 'undefined' ? localStorage.getItem('kabadiwala_user') : null;
+        if (!rawUser) return;
         const u = JSON.parse(rawUser);
+        if (!isMounted) return;
         if (u.name) setRecyclerName(u.name);
         const rid = u.recycler_id || u.recyclerId || u.id;
         if (rid) setRecyclerId(rid);
-      } catch {}
-    }
+        if (Array.isArray(u.materials_accepted) && u.materials_accepted.length > 0) {
+          setMaterialsAccepted(u.materials_accepted);
+        }
+        if (u.offered_rates && typeof u.offered_rates === 'object') {
+          setRates(u.offered_rates);
+        }
+      } catch { /* ignore */ } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+    loadProfile();
+    return () => { isMounted = false; };
   }, []);
 
   const handleRateChange = (cat: string, val: string) => {

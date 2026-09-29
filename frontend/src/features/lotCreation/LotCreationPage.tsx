@@ -188,6 +188,11 @@ export const LotCreationPage: React.FC = () => {
 
   // Save state
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Locale helper
+  const lang = (typeof window !== 'undefined' && localStorage.getItem('kabadiwala_lang')) || 'en';
+  const isEn = lang !== 'hi' && lang !== 'mr';
 
   // ─── Totals ───
   const totalWeight = items.reduce((s, i) => s + i.weightKg, 0);
@@ -312,6 +317,8 @@ export const LotCreationPage: React.FC = () => {
     const userStr = localStorage.getItem('kabadiwala_user');
     const userObj = userStr ? JSON.parse(userStr) : null;
     const collectorId = userObj?.id ?? 'col-demo-101';
+    // shouldMatchImmediately mirrors the param: navigate to match page right away
+    const shouldMatchImmediately = shouldMatchRecycler;
 
     // Best-effort GPS capture at collection time (non-blocking)
     let collectionLat: number | undefined;

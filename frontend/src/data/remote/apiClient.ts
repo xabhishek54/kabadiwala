@@ -166,7 +166,6 @@ export async function confirmHandover(
     if (e instanceof Error && e.message.startsWith('Handover rejected')) throw e;
     console.warn('API handover confirmation offline, updating local IndexedDB');
   }
-  return response.json();
 }
 
 export interface PriceRefineResult {
@@ -224,9 +223,14 @@ export interface AnomalyRecord {
   reasons: string[];
   recommended_action: string;
   audit_status: string;
-  unit_price_per_kg?: number;
-  category_median_price?: number;
-  weight_kg?: number;
+  // Enriched fields added by fetchAnomalies mapper
+  material_category?: string;
+  quoted_price?: number;
+  median_price?: number;
+  mad_score?: number;
+  z_score?: number;
+  condition_signal?: string;
+  flagged_reasons?: string[];
 }
 
 export async function fetchPrices(district: string = 'Pune') {
@@ -267,16 +271,6 @@ export async function fetchAnomalies(): Promise<AnomalyRecord[]> {
   }
 }
 
-export async function resolveAnomaly(lotId: string): Promise<void> {
-  const response = await fetch(
-    `${API_BASE_URL}/admin/anomalies/${encodeURIComponent(lotId)}/resolve`,
-    { method: 'PATCH' }
-  );
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || `Could not resolve anomaly (${response.status})`);
-  }
-}
 
 export interface RecyclerLotRecord {
   lot_id: string;

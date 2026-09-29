@@ -48,11 +48,12 @@ export const RecyclerDashboardPage: React.FC = () => {
   const recyclerId = currentUser?.recycler_id || currentUser?.id || 'rec-pune-001';
 
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [lots, setLots] = useState<RecyclerLotRecord[]>([]);
+  const [lots, setLots] = useState<AdminLot[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string>('');
   const [selectedDetailLot, setSelectedDetailLot] = useState<AdminLot | null>(null);
   const [isConfirmingPickup, setIsConfirmingPickup] = useState<boolean>(false);
 
@@ -312,7 +313,7 @@ export const RecyclerDashboardPage: React.FC = () => {
               <Package size={15} />
             </div>
           </div>
-          <p className="text-xl sm:text-3xl font-black text-stone-900 truncate">{stats ? `${stats.total_weight_kg} kg` : '0 kg'}</p>
+          <p className="text-xl sm:text-3xl font-black text-stone-900 truncate">{stats ? `${stats.assigned_weight_kg} kg` : '0 kg'}</p>
           <p className="text-[10px] sm:text-xs text-emerald-600 font-bold flex items-center gap-1 leading-tight truncate">↑ 14% monthly intake</p>
         </div>
 
@@ -323,7 +324,7 @@ export const RecyclerDashboardPage: React.FC = () => {
               <IndianRupee size={15} />
             </div>
           </div>
-          <p className="text-xl sm:text-3xl font-black text-stone-900 truncate">₹{stats ? stats.total_payouts_inr.toLocaleString('en-IN') : '0'}</p>
+          <p className="text-xl sm:text-3xl font-black text-stone-900 truncate">₹{stats ? stats.paid_total_inr.toLocaleString('en-IN') : '0'}</p>
           <p className="text-[10px] sm:text-xs text-stone-500 font-medium leading-tight truncate">Direct settlements</p>
         </div>
 
@@ -334,7 +335,7 @@ export const RecyclerDashboardPage: React.FC = () => {
               <Layers size={15} />
             </div>
           </div>
-          <p className="text-xl sm:text-3xl font-black text-stone-900">{stats ? stats.total_lots : 0}</p>
+          <p className="text-xl sm:text-3xl font-black text-stone-900">{stats ? stats.active_lots : 0}</p>
           <p className="text-[10px] sm:text-xs text-amber-700 font-bold leading-tight truncate">Pending verification</p>
         </div>
 
@@ -345,7 +346,7 @@ export const RecyclerDashboardPage: React.FC = () => {
               <Award size={15} />
             </div>
           </div>
-          <p className="text-xl sm:text-3xl font-black text-stone-900">{stats ? stats.verified_recyclers_count : 1}</p>
+          <p className="text-xl sm:text-3xl font-black text-stone-900">{stats ? stats.material_categories : 1}</p>
           <p className="text-xs text-purple-700 font-bold">MPCB License #BO/MPCB/RO-PUNE/2024</p>
         </div>
       </div>

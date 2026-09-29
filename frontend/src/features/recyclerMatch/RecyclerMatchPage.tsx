@@ -128,11 +128,15 @@ export const RecyclerMatchPage: React.FC = () => {
   const [material, setMaterial] = useState<LocalMaterial | null>(null);
   const [recyclersList, setRecyclersList] = useState<RecyclerDisplay[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [matchError, setMatchError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'All' | 'Verified' | 'Pickup Available'>('All');
   const [expandedRecyclerId, setExpandedRecyclerId] = useState<string | null>(null);
   // true only when a real lot exists to match against
   const [hasValidLot, setHasValidLot] = useState<boolean>(false);
+
+  const lang = (typeof window !== 'undefined' && localStorage.getItem('kabadiwala_lang')) || 'en';
+  const isEn = lang !== 'hi' && lang !== 'mr';
 
   const district = (typeof window !== 'undefined' && localStorage.getItem('kabadiwala_district')) || 'Pune';
 
@@ -143,13 +147,15 @@ export const RecyclerMatchPage: React.FC = () => {
       let weight = 2.5;
       let lotFound = false;
 
-      if (lotId) {
-        const mat = await db.materials.get(lotId);
-        if (mat) {
-          setMaterial(mat);
-          category = mat.material_category || 'PCB';
-          weight = mat.approx_weight_kg || 2.5;
-          lotFound = true;
+      try {
+        if (lotId) {
+          const mat = await db.materials.get(lotId);
+          if (mat) {
+            setMaterial(mat);
+            category = mat.material_category || 'PCB';
+            weight = mat.approx_weight_kg || 2.5;
+            lotFound = true;
+          }
         }
       } catch (error) {
         console.error('Unable to load authorized recycler matches:', error);
@@ -415,7 +421,7 @@ export const RecyclerMatchPage: React.FC = () => {
         const verifiedMatches = matchResults.filter(
           (item: any) => item.recycler?.authorization_status === 'verified'
         );
-        setMatches(verifiedMatches);
+        setRecyclersList(verifiedMatches);
         if (verifiedMatches.length > 0) {
           await db.recyclers.bulkPut(verifiedMatches.map((item: any) => item.recycler));
         }

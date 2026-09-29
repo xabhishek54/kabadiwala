@@ -7,10 +7,11 @@ interface MineralImpactData {
   district: string;
   mineral_estimates: Record<string, number>;
   total_e_waste_processed_kg: number;
+  estimate_basis?: string;
 }
 
 export const MineralsImpactPage: React.FC = () => {
-  const [data, setData] = useState<MineralImpactRecord | null>(null);
+  const [data, setData] = useState<MineralImpactData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState('');
 
@@ -60,7 +61,7 @@ export const MineralsImpactPage: React.FC = () => {
     copper: { label: 'Copper', symbol: 'Cu', color: 'bg-orange-600 text-white', desc: 'Electrical Wiring & Power Grids', maxKg: 500 },
   };
 
-  const totalRawGrams = data?.mineral_estimates ? Object.values(data.mineral_estimates).reduce((a, b) => a + b, 0) : 0;
+  const totalRawGrams = data?.mineral_estimates ? Object.values(data.mineral_estimates).reduce((a, b) => Number(a) + Number(b), 0) : 0;
   const totalRecoveryKg = (totalRawGrams / 1000).toFixed(1);
 
   return (
@@ -144,8 +145,9 @@ export const MineralsImpactPage: React.FC = () => {
                 desc: 'Strategic Industrial Mineral',
                 maxKg: 100,
               };
-              const kgValNum = val / 1000;
-              const kgVal = val >= 1000 ? kgValNum.toFixed(2) + ' kg' : val.toFixed(1) + ' g';
+              const valNum = Number(val);
+              const kgValNum = valNum / 1000;
+              const kgVal = valNum >= 1000 ? kgValNum.toFixed(2) + ' kg' : valNum.toFixed(1) + ' g';
               const progressPct = Math.min(100, Math.round((kgValNum / info.maxKg) * 100));
 
               return (

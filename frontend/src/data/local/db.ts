@@ -56,10 +56,6 @@ export interface LocalTransaction {
   recycler_phone?: string;         // recycler contact phone
   recycler_facility_address?: string; // recycler location
   status: 'draft' | 'quoted' | 'matched' | 'handed_over' | 'confirmed' | 'paid' | 'closed';
-  handover_lat?: number;
-  handover_lng?: number;
-  collection_lat?: number;
-  collection_lng?: number;
   quoted_price?: number;
   final_sale_value?: number;       // actual settled price after handover
   payment_method: 'cash' | 'upi' | 'pending';
