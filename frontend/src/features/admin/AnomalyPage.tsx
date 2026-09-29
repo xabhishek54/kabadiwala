@@ -8,42 +8,19 @@ export const AnomalyPage: React.FC = () => {
   const [anomalies, setAnomalies] = useState<AnomalyRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [resolvedLots, setResolvedLots] = useState<Set<string>>(new Set());
+  const [loadError, setLoadError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [resolvingLot, setResolvingLot] = useState<string | null>(null);
 
   const loadAnomalies = async () => {
     setIsLoading(true);
+    setLoadError('');
     try {
       const data = await fetchAnomalies();
       setAnomalies(data);
-    } catch {
-      // Fallback mock anomaly record for demonstration
-      setAnomalies([
-        {
-          lot_id: 'lot-flagged-8821',
-          collector_id: 'col-suspicious-09',
-          material_category: 'PCB',
-          quoted_price: 1850.0,
-          median_price: 650.0,
-          mad_score: 3.42,
-          z_score: 3.42,
-          condition_signal: 'stripped',
-          flagged_reasons: ['Price 2.8x higher than Median for Stripped condition'],
-          recommended_action: 'Manual Physical Inspection Required Before Payout',
-          audit_status: 'FLAGGED',
-        },
-        {
-          lot_id: 'lot-flagged-4412',
-          collector_id: 'col-demo-101',
-          material_category: 'BATTERY',
-          quoted_price: 950.0,
-          median_price: 450.0,
-          mad_score: 2.15,
-          z_score: 2.15,
-          condition_signal: 'damaged',
-          flagged_reasons: ['Weight-to-value ratio exceeds MAD threshold'],
-          recommended_action: 'Flagged for Recycler Verification',
-          audit_status: 'FLAGGED',
-        },
-      ]);
+    } catch (error) {
+      setAnomalies([]);
+      setLoadError(error instanceof Error ? error.message : 'Could not load anomaly records.');
     } finally {
       setIsLoading(false);
     }

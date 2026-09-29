@@ -6,6 +6,7 @@ export interface LocalMaterial {
   sub_category: string;
   description?: string;      // full text description of the material
   image_ref?: string;
+  photo_local_uri?: string;
   approx_weight_kg: number;
   condition: 'intact' | 'damaged' | 'stripped';
   condition_confidence?: number;
@@ -55,6 +56,10 @@ export interface LocalTransaction {
   recycler_phone?: string;         // recycler contact phone
   recycler_facility_address?: string; // recycler location
   status: 'draft' | 'quoted' | 'matched' | 'handed_over' | 'confirmed' | 'paid' | 'closed';
+  handover_lat?: number;
+  handover_lng?: number;
+  collection_lat?: number;
+  collection_lng?: number;
   quoted_price?: number;
   final_sale_value?: number;       // actual settled price after handover
   payment_method: 'cash' | 'upi' | 'pending';

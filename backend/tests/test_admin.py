@@ -4,38 +4,29 @@ Tests for Phase 7: Admin & Recycler Dashboard Endpoints.
 Spec ref: 02-features-implementation.md §7, 06-development-deployment.md §2 (Phase 7)
 """
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
-from app.main import app
-from app.database import Base, get_db
 from app.models.collector import Collector
 from app.models.material import Material
 from app.models.transaction import Transaction
 from app.models.recycler import Recycler
 from app.models.enums import MaterialCategory, MaterialCondition, TransactionStatus, AuthorizationStatus
+from app.models.traceability import TraceabilityEvent
 
-TEST_DATABASE_URL = "sqlite:///./test.db"
-test_engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+# Import shared test infrastructure from conftest
+from tests.helpers import client, TestingSessionLocal
 
-def override_get_db():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-app.dependency_overrides[get_db] = override_get_db
-client = TestClient(app)
 
 @pytest.fixture(autouse=True)
-def setup_db():
-    Base.metadata.create_all(bind=test_engine)
+def seed_admin_data():
+    """Seed baseline data that all admin tests need."""
     db = TestingSessionLocal()
 
-    c = Collector(collector_id="admin-c1", display_name="Ramesh Kumar", phone_number="9876543210", operating_locality="Hadapsar, Pune")
+    c = Collector(
+        collector_id="admin-c1",
+        display_name="Ramesh Kumar",
+        phone_number="9876543210",
+        operating_locality="Hadapsar, Pune",
+    )
     db.add(c)
 
     m1 = Material(
@@ -73,14 +64,6 @@ def setup_db():
     db.commit()
     db.close()
     yield
-    # Clean up created rows without dropping tables
-    db_cleanup = TestingSessionLocal()
-    db_cleanup.query(Transaction).filter(Transaction.lot_id == "lot-admin-101").delete()
-    db_cleanup.query(Material).filter(Material.lot_id == "lot-admin-101").delete()
-    db_cleanup.query(Collector).filter(Collector.collector_id == "admin-c1").delete()
-    db_cleanup.query(Recycler).filter(Recycler.recycler_id == "admin-r1").delete()
-    db_cleanup.commit()
-    db_cleanup.close()
 
 
 def test_list_admin_lots():
@@ -93,6 +76,9 @@ def test_list_admin_lots():
 
 
 def test_update_lot_status():
+    handed_over = client.patch("/admin/lots/lot-admin-101/status?status=handed_over")
+    assert handed_over.status_code == 200
+
     resp = client.patch("/admin/lots/lot-admin-101/status?status=confirmed&final_sale_value=3600.0")
     assert resp.status_code == 200
     data = resp.json()
@@ -104,6 +90,14 @@ def test_update_lot_status():
     assert len(matching) == 1
     assert matching[0]["status"] == "confirmed"
     assert matching[0]["final_sale_value"] == 3600.0
+
+
+def test_update_lot_status_requires_existing_lot_and_valid_transition():
+    missing = client.patch("/admin/lots/not-a-real-lot/status?status=confirmed")
+    assert missing.status_code == 404
+
+    invalid = client.patch("/admin/lots/lot-admin-101/status?status=paid")
+    assert invalid.status_code == 409
 
 
 def test_dashboard_stats():
@@ -123,12 +117,21 @@ def test_resolve_anomaly():
 
 
 def test_minerals_impact():
+    assert client.patch("/admin/lots/lot-admin-101/status?status=handed_over").status_code == 200
+    assert client.patch(
+        "/admin/lots/lot-admin-101/status?status=confirmed&final_sale_value=3500"
+    ).status_code == 200
+    assert client.patch(
+        "/admin/lots/lot-admin-101/status?status=paid"
+    ).status_code == 200
+
     resp = client.get("/admin/minerals/impact")
     assert resp.status_code == 200
     data = resp.json()
     assert "mineral_estimates" in data
     assert "copper" in data["mineral_estimates"]
     assert data["total_e_waste_processed_kg"] >= 12.5
+    assert "not measured" in data["estimate_basis"].lower()
 
 
 def test_update_recycler_config():
@@ -141,4 +144,3 @@ def test_update_recycler_config():
     data = resp.json()
     assert data["service_radius_km"] == 25.0
     assert "CABLE" in data["materials_accepted"]
-

@@ -19,15 +19,17 @@ export const RecyclerOnboardingPage: React.FC = () => {
   const [mpcbRef, setMpcbRef] = useState('');
   const [district, setDistrict] = useState(provisionalUser?.district || 'Pune');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
+  const [isFindingLocation, setIsFindingLocation] = useState(false);
+  const [facilityLocation, setFacilityLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [error, setError] = useState('');
   const [rates, setRates] = useState<Record<string, number>>({
-    PCB: 280,
-    BATTERY: 95,
-    CABLE: 155,
-    LCD_PANEL: 110,
-    CRT: 40,
-    MOTOR_MAGNET: 75,
-    MIXED_PLASTIC: 25,
+    PCB: 0,
+    BATTERY: 0,
+    CABLE: 0,
+    LCD_PANEL: 0,
+    CRT: 0,
+    MOTOR_MAGNET: 0,
+    MIXED_PLASTIC: 0,
   });
 
   const districts = ['Pune', 'Mumbai', 'Thane', 'Nagpur', 'Nashik', 'Pimpri-Chinchwad'];
@@ -47,17 +49,76 @@ export const RecyclerOnboardingPage: React.FC = () => {
     setRates((prev) => ({ ...prev, [cat]: num }));
   };
 
+  const requestFacilityLocation = () => {
+    setError('');
+    if (!navigator.geolocation) {
+      setError(isEn ? 'This browser cannot provide facility location.' : 'या ब्राउझरमध्ये स्थान उपलब्ध नाही.');
+      return;
+    }
+    setIsFindingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setFacilityLocation({ lat: coords.latitude, lng: coords.longitude });
+        setIsFindingLocation(false);
+      },
+      (geoError) => {
+        setError(geoError.message || (isEn ? 'Could not get facility location.' : 'स्थान मिळू शकले नाही.'));
+        setIsFindingLocation(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    );
+  };
+
+  const continueToLocation = () => {
+    if (!name.trim() || !/^\d{10}$/.test(phone) || !mpcbRef.trim()) {
+      setError(isEn
+        ? 'Enter the facility name, a 10-digit phone number, and authorization reference.'
+        : 'सुविधेचे नाव, १० अंकी फोन क्रमांक आणि अधिकृतता संदर्भ भरा.');
+      return;
+    }
+    setError('');
+    setStep(2);
+  };
+
+  const continueToRates = () => {
+    if (!district || !facilityLocation) {
+      setError(isEn
+        ? 'Choose the operating district and capture the facility GPS location.'
+        : 'कार्यक्षेत्र निवडा आणि सुविधेचे GPS स्थान नोंदवा.');
+      return;
+    }
+    setError('');
+    setStep(3);
+  };
+
   const handleFinish = async () => {
+    setError('');
+    const offeredRates = Object.fromEntries(
+      Object.entries(rates).filter(([, rate]) => Number.isFinite(rate) && rate > 0),
+    );
+    if (!name.trim() || !/^\d{10}$/.test(phone) || !mpcbRef.trim() || !district) {
+      setError(isEn ? 'Complete the facility details before registering.' : 'नोंदणीपूर्वी सुविधा तपशील पूर्ण करा.');
+      return;
+    }
+    if (!facilityLocation) {
+      setError(isEn ? 'Capture the facility location before registering.' : 'नोंदणीपूर्वी सुविधेचे स्थान नोंदवा.');
+      return;
+    }
+    if (Object.keys(offeredRates).length === 0) {
+      setError(isEn ? 'Enter at least one positive buying rate.' : 'किमान एक सकारात्मक खरेदी दर भरा.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const response = await registerRecycler({
-        name,
+        name: name.trim(),
         contact_phone: phone,
-        authorization_ref_no: mpcbRef,
-        facility_lat: 18.5204,
-        facility_lng: 73.8567,
-        offered_rates: rates,
-        materials_accepted: Object.keys(rates),
+        authorization_ref_no: mpcbRef.trim(),
+        facility_lat: facilityLocation.lat,
+        facility_lng: facilityLocation.lng,
+        offered_rates: offeredRates,
+        materials_accepted: Object.keys(offeredRates),
       });
 
       const session = await loginUser(phone, 'recycler').catch(() => null);
@@ -75,28 +136,33 @@ export const RecyclerOnboardingPage: React.FC = () => {
         district,
       };
 
-      // Save to local IndexedDB so matching engine can find it offline too
-      await db.recyclers.put({
-        recycler_id: response.recycler_id || `rec-${Date.now()}`,
-        name,
-        authorization_status: 'verified',
-        authorization_ref_no: mpcbRef,
-        contact_phone: phone,
-        facility_lat: 18.5204,
-        facility_lng: 73.8567,
-        offered_rates: rates,
-        pickup_available: true,
-        service_radius_km: 30.0,
-        materials_accepted: Object.keys(rates),
-      }).catch(() => {});
+      try {
+        await db.recyclers.put({
+          recycler_id: response.recycler_id,
+          name: name.trim(),
+          authorization_status: response.authorization_status,
+          authorization_ref_no: mpcbRef.trim(),
+          contact_phone: phone,
+          facility_lat: facilityLocation.lat,
+          facility_lng: facilityLocation.lng,
+          offered_rates: offeredRates,
+          pickup_available: false,
+          service_radius_km: 30.0,
+          materials_accepted: Object.keys(offeredRates),
+        });
+      } catch (cacheError) {
+        console.error('Recycler facility registered, but offline cache could not be saved.', cacheError);
+      }
 
-      localStorage.setItem('kabadiwala_user', JSON.stringify(userObj));
-      localStorage.setItem('kabadiwala_district', district);
+      window.localStorage?.setItem('kabadiwala_user', JSON.stringify(userObj));
+      window.localStorage?.setItem('kabadiwala_district', district);
 
       window.dispatchEvent(new Event('district_changed'));
       navigate('/recycler');
     } catch (err) {
-      alert(isEn ? 'Failed to register recycler account. Please check connection.' : 'नोंदणी अयशस्वी. नेटवर्क तपासा.');
+      setError(err instanceof Error
+        ? err.message
+        : (isEn ? 'Could not register facility. Please check your connection and retry.' : 'नोंदणी अयशस्वी. नेटवर्क तपासा.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -108,7 +174,7 @@ export const RecyclerOnboardingPage: React.FC = () => {
       <div className="text-center mb-6 space-y-1">
         <div className="inline-flex items-center space-x-1.5 bg-amber-500/20 text-amber-400 px-3 py-1 rounded-full text-xs font-bold border border-amber-500/30">
           <ShieldCheck size={14} />
-          <span>{isEn ? 'MPCB Authorized Recycler Onboarding' : 'MPCB अधिकृत रीसायकलर नोंदणी'}</span>
+          <span>{isEn ? 'Recycler Facility Registration' : 'रीसायकलर सुविधा नोंदणी'}</span>
         </div>
         <h1 className="text-2xl font-black text-white">{isEn ? 'Recycler Facility Portal' : 'रीसायकलर सुविधा पोर्टल'}</h1>
       </div>
@@ -124,6 +190,12 @@ export const RecyclerOnboardingPage: React.FC = () => {
           />
         ))}
       </div>
+
+      {error && (
+        <div role="alert" className="mb-4 rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs font-semibold text-rose-800">
+          {error}
+        </div>
+      )}
 
       {/* Step 1: Business Details */}
       {step === 1 && (
@@ -191,7 +263,7 @@ export const RecyclerOnboardingPage: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => setStep(2)}
+            onClick={continueToLocation}
             className="w-full bg-stone-900 hover:bg-stone-800 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center space-x-2 shadow-md active:scale-95 transition-all mt-4 text-xs"
           >
             <span>{isEn ? 'Select Operating Location' : 'आगे बढ़ें (Select Operating Location)'}</span>
@@ -230,6 +302,29 @@ export const RecyclerOnboardingPage: React.FC = () => {
             ))}
           </div>
 
+          <div className="rounded-xl border border-stone-200 bg-stone-50 p-3 space-y-2">
+            <p className="text-xs text-stone-600">
+              {isEn
+                ? 'Share the facility’s current GPS location. It is used to calculate nearby recycler matches.'
+                : 'जवळचे जुळणारे व्यवहार शोधण्यासाठी सुविधेचे सध्याचे GPS स्थान द्या.'}
+            </p>
+            <button
+              type="button"
+              onClick={requestFacilityLocation}
+              disabled={isFindingLocation}
+              className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-bold text-stone-800 disabled:opacity-60"
+            >
+              {isFindingLocation
+                ? (isEn ? 'Getting location…' : 'स्थान घेत आहे…')
+                : (isEn ? 'Use current facility location' : 'सध्याचे सुविधा स्थान वापरा')}
+            </button>
+            {facilityLocation && (
+              <p role="status" className="text-[11px] text-emerald-700">
+                {isEn ? 'Facility location captured.' : 'सुविधेचे स्थान नोंदवले.'}
+              </p>
+            )}
+          </div>
+
           <div className="flex space-x-2 pt-2">
             <button
               type="button"
@@ -240,7 +335,7 @@ export const RecyclerOnboardingPage: React.FC = () => {
             </button>
             <button
               type="button"
-              onClick={() => setStep(3)}
+              onClick={continueToRates}
               className="flex-1 bg-stone-900 hover:bg-stone-800 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center space-x-2 shadow-md active:scale-95 transition-all text-xs"
             >
               <span>{isEn ? 'Configure Buying Rates' : 'दर निश्चित करा (Set Rates)'}</span>
@@ -290,8 +385,8 @@ export const RecyclerOnboardingPage: React.FC = () => {
             <CheckCircle2 size={18} />
             <span>
               {isSubmitting
-                ? (isEn ? 'Registering Facility...' : 'नोंदणी होत आहे...')
-                : (isEn ? 'Register & Launch Recycler Hub' : 'खाते नोंदवा व सुरू करा (Register & Launch)')}
+                ? (isEn ? 'Submitting facility...' : 'नोंदणी होत आहे...')
+                  : (isEn ? 'Submit facility for verification' : 'सुविधा पडताळणीसाठी पाठवा')}
             </span>
           </button>
         </div>

@@ -16,6 +16,7 @@ export const RecyclerRatesPage: React.FC = () => {
     MIXED_PLASTIC: 25.0,
   });
 
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -35,8 +36,8 @@ export const RecyclerRatesPage: React.FC = () => {
   };
 
   useEffect(() => {
-    const rawUser = localStorage.getItem('kabadiwala_user');
-    if (rawUser) {
+    let isMounted = true;
+    const loadProfile = async () => {
       try {
         const u = JSON.parse(rawUser);
         if (u.name) setRecyclerName(u.name);
@@ -52,13 +53,27 @@ export const RecyclerRatesPage: React.FC = () => {
   };
 
   const handleSaveRates = async () => {
+    setError('');
+    const activeRates = Object.fromEntries(
+      Object.entries(rates).filter(
+        ([category, rate]) => materialsAccepted.includes(category) && Number.isFinite(rate) && rate > 0,
+      ),
+    );
+    if (!recyclerId) {
+      setError('Recycler account is not available. Sign in again and retry.');
+      return;
+    }
+    if (Object.keys(activeRates).length === 0) {
+      setError('Select an accepted material and enter a positive buying rate.');
+      return;
+    }
     setIsSaving(true);
     try {
       await updateRecyclerRates(recyclerId, rates);
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 3000);
-    } catch (e) {
-      console.error('Failed updating rates', e);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Could not save facility rates.');
     } finally {
       setIsSaving(false);
     }
@@ -96,7 +111,7 @@ export const RecyclerRatesPage: React.FC = () => {
 
         <button
           type="button"
-          disabled={isSaving}
+          disabled={isSaving || isLoading || !recyclerId}
           onClick={handleSaveRates}
           className="w-full sm:w-auto bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold px-4 py-2.5 rounded-2xl flex items-center justify-center space-x-2 shadow-xs transition-all text-xs disabled:opacity-50 cursor-pointer shrink-0"
         >

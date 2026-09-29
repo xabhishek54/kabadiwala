@@ -44,7 +44,7 @@ export const CollectorOnboardingPage: React.FC = () => {
 
   const getProvisionalUser = () => {
     try {
-      const raw = localStorage.getItem('kabadiwala_user');
+      const raw = window.localStorage?.getItem('kabadiwala_user');
       return raw ? JSON.parse(raw) : { name: 'Ramesh Kumar', phone: '9876543210', role: 'collector' };
     } catch {
       return { name: 'Ramesh Kumar', phone: '9876543210', role: 'collector' };
@@ -79,10 +79,10 @@ export const CollectorOnboardingPage: React.FC = () => {
         district,
         isNew: false,
       };
-      localStorage.setItem('kabadiwala_user', JSON.stringify(updated));
-      localStorage.setItem('kabadiwala_district', district);
-      localStorage.setItem('kabadiwala_account_type', accountType);
-      if (result.shop_code) localStorage.setItem('kabadiwala_shop_code', result.shop_code);
+      window.localStorage?.setItem('kabadiwala_user', JSON.stringify(updated));
+      window.localStorage?.setItem('kabadiwala_district', district);
+      window.localStorage?.setItem('kabadiwala_account_type', accountType);
+      if (result.shop_code) window.localStorage?.setItem('kabadiwala_shop_code', result.shop_code);
 
       setStep(3);
     } catch (err: any) {
@@ -111,11 +111,11 @@ export const CollectorOnboardingPage: React.FC = () => {
       setLinkedShopName(result.shop_name);
 
       // Update localStorage with linked shop info
-      const raw = localStorage.getItem('kabadiwala_user');
+      const raw = window.localStorage?.getItem('kabadiwala_user');
       if (raw) {
         const u = JSON.parse(raw);
         u.parentShopCode = result.shop_code;
-        localStorage.setItem('kabadiwala_user', JSON.stringify(u));
+        window.localStorage?.setItem('kabadiwala_user', JSON.stringify(u));
       }
     } catch (err: any) {
       setLinkError(err?.message || 'Invalid shop code. Please check and try again.');

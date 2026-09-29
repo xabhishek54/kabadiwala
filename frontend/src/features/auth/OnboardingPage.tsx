@@ -30,11 +30,11 @@ export const OnboardingPage: React.FC = () => {
   ];
 
   const handleFinish = () => {
-    const raw = localStorage.getItem('kabadiwala_user');
+    const raw = window.localStorage?.getItem('kabadiwala_user');
     if (raw) {
       const user = JSON.parse(raw);
       user.isNew = false;
-      localStorage.setItem('kabadiwala_user', JSON.stringify(user));
+      window.localStorage?.setItem('kabadiwala_user', JSON.stringify(user));
     }
     navigate('/');
   };

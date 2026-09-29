@@ -108,14 +108,12 @@ export const HandoverPage: React.FC = () => {
           setIsGettingGps(false);
         },
         () => {
-          // Default to Pune hub coordinates if GPS permission prompt declined or unavailable
-          setGpsLocation({ lat: 18.5204, lng: 73.8567 });
           setIsGettingGps(false);
         },
         { enableHighAccuracy: true, timeout: 10000 }
       );
     } else {
-      setGpsLocation({ lat: 18.5204, lng: 73.8567 });
+      setGpsLocation(null);
     }
   }, []);
 
@@ -277,8 +275,8 @@ export const HandoverPage: React.FC = () => {
       payload: {
         status: 'closed',
         payment_status: 'paid',
-        final_sale_value: finalVal,
         payment_method: paymentMethod,
+        final_sale_value: finalVal,
         handover_lat: gpsLocation?.lat,
         handover_lng: gpsLocation?.lng,
         handover_address: handoverAddress,

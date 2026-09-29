@@ -1,4 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from collections import deque
+from datetime import datetime, timezone
+import threading
+import time
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.recycler import Recycler
@@ -11,8 +15,45 @@ from app.schemas.authorization import PublicVerifyResponse
 
 router = APIRouter(prefix="/verify", tags=["verify"])
 
+_RATE_LIMIT_WINDOW_SECONDS = 60
+_RATE_LIMIT_REQUESTS = 60
+_request_times: dict[str, deque[float]] = {}
+_rate_limit_lock = threading.Lock()
+
+def _enforce_rate_limit(request: Request) -> None:
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    with _rate_limit_lock:
+        recent_requests = _request_times.setdefault(client_ip, deque())
+        while recent_requests and now - recent_requests[0] >= _RATE_LIMIT_WINDOW_SECONDS:
+            recent_requests.popleft()
+        if len(recent_requests) >= _RATE_LIMIT_REQUESTS:
+            raise HTTPException(status_code=429, detail="Too many verification requests. Try again shortly.")
+        recent_requests.append(now)
+        if len(_request_times) > 1000:
+            expired_ips = [
+                ip for ip, requests in _request_times.items()
+                if not requests or now - requests[-1] >= _RATE_LIMIT_WINDOW_SECONDS
+            ]
+            for ip in expired_ips:
+                _request_times.pop(ip, None)
+
+def _is_unexpired(expires_at: datetime | None) -> bool:
+    if expires_at is None:
+        return True
+    current_time = datetime.now(timezone.utc)
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    return expires_at > current_time
+
 @router.get("/{identifier}", response_model=PublicVerifyResponse)
-def public_verify_lookup(identifier: str, db: Session = Depends(get_db)):
+def public_verify_lookup(
+    identifier: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    _enforce_rate_limit(request)
+
     # 1. Try finding as a Lot ID
     material = db.query(Material).filter(Material.lot_id == identifier).first()
     if material:
@@ -22,6 +63,8 @@ def public_verify_lookup(identifier: str, db: Session = Depends(get_db)):
             CollectionAuthorization.collector_id == material.collector_id,
             CollectionAuthorization.status == CollectionAuthStatus.active
         ).first() if material.collector_id else None
+        if active_auth and not _is_unexpired(active_auth.expires_at):
+            active_auth = None
 
         return PublicVerifyResponse(
             type="lot",
@@ -34,8 +77,6 @@ def public_verify_lookup(identifier: str, db: Session = Depends(get_db)):
                 "sub_category": material.sub_category,
                 "approx_weight_kg": material.approx_weight_kg,
                 "condition": material.condition.value,
-                "estimated_value": material.estimated_value,
-                "collector_locality": collector.operating_locality if collector else "Pune",
                 "is_authorized_agent": active_auth is not None,
                 "authorized_by_recycler": active_auth.recycler.name if active_auth else None,
                 "created_at": material.created_at.isoformat() if material.created_at else None,
@@ -57,9 +98,6 @@ def public_verify_lookup(identifier: str, db: Session = Depends(get_db)):
             is_valid=is_verified,
             details={
                 "authorization_ref_no": recycler.authorization_ref_no,
-                "materials_accepted": recycler.materials_accepted,
-                "service_radius_km": recycler.service_radius_km,
-                "pickup_available": recycler.pickup_available,
             }
         )
 
@@ -69,12 +107,19 @@ def public_verify_lookup(identifier: str, db: Session = Depends(get_db)):
     ).first()
 
     if auth_obj:
-        is_valid = auth_obj.status == CollectionAuthStatus.active
+        is_valid = (
+            auth_obj.status == CollectionAuthStatus.active
+            and _is_unexpired(auth_obj.expires_at)
+        )
+        verification_status = (
+            "expired" if auth_obj.status == CollectionAuthStatus.active and not is_valid
+            else auth_obj.status.value
+        )
         return PublicVerifyResponse(
             type="collection_agent",
             id=auth_obj.authorization_id,
             name_or_title=f"Authorized Agent for {auth_obj.recycler.name}",
-            verification_status=auth_obj.status.value,
+            verification_status=verification_status,
             is_valid=is_valid,
             details={
                 "issued_at": auth_obj.issued_at.isoformat(),
@@ -93,19 +138,19 @@ def public_verify_lookup(identifier: str, db: Session = Depends(get_db)):
             CollectionAuthorization.collector_id == collector.collector_id,
             CollectionAuthorization.status == CollectionAuthStatus.active
         ).first()
+        if active_auth and not _is_unexpired(active_auth.expires_at):
+            active_auth = None
 
         is_valid = active_auth is not None
-        issuing_name = active_auth.recycler.name if active_auth else "None"
         return PublicVerifyResponse(
             type="collector",
             id=collector.collector_id,
-            name_or_title=collector.display_name or f"Collector ({collector.operating_locality})",
+            name_or_title="Authorized Collection Agent" if is_valid else "Unverified Collector",
             verification_status="active" if is_valid else "unverified",
             is_valid=is_valid,
             details={
-                "operating_locality": collector.operating_locality,
-                "account_type": collector.account_type.value,
-                "authorized_by": issuing_name,
+                "scope_note": active_auth.scope_note if active_auth else None,
+                "authorized_by_recycler": active_auth.recycler.name if active_auth else None,
             }
         )
 

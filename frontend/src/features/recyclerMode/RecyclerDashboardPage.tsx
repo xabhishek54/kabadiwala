@@ -32,11 +32,10 @@ interface AdminLot {
 }
 
 interface DashboardStats {
-  total_lots: number;
-  total_weight_kg: number;
-  total_payouts_inr: number;
-  verified_recyclers_count: number;
-  category_breakdown: Array<{ category: string; count: number; weight_kg: number }>;
+  assigned_weight_kg: number;
+  paid_total_inr: number;
+  active_lots: number;
+  material_categories: number;
 }
 
 export const RecyclerDashboardPage: React.FC = () => {
@@ -49,7 +48,7 @@ export const RecyclerDashboardPage: React.FC = () => {
   const recyclerId = currentUser?.recycler_id || currentUser?.id || 'rec-pune-001';
 
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [lots, setLots] = useState<AdminLot[]>([]);
+  const [lots, setLots] = useState<RecyclerLotRecord[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -63,6 +62,14 @@ export const RecyclerDashboardPage: React.FC = () => {
       return;
     }
     setLoading(true);
+    setLoadError('');
+    if (!recyclerId) {
+      setLots([]);
+      setStats(null);
+      setLoadError('Sign in with a recycler account to view its assigned lots.');
+      setLoading(false);
+      return;
+    }
     try {
       // 1. Local IndexedDB matched transactions
       const localTxs = await db.transactions.toArray();
@@ -132,35 +139,19 @@ export const RecyclerDashboardPage: React.FC = () => {
 
       const finalLotList = Array.from(uniqueLotsMap.values());
       setLots(finalLotList);
-
-      // Compute facility-specific dynamic stats
-      let totalWt = 0;
-      let totalPayout = 0;
-      const catCount: Record<string, { count: number; weight: number }> = {};
-
-      finalLotList.forEach(l => {
-        totalWt += l.weight_kg;
-        if (l.payment_status === 'paid' || l.status === 'closed') {
-          totalPayout += l.final_sale_value || l.estimated_value;
-        }
-        if (!catCount[l.category]) catCount[l.category] = { count: 0, weight: 0 };
-        catCount[l.category].count += 1;
-        catCount[l.category].weight += l.weight_kg;
-      });
-
       setStats({
-        total_lots: finalLotList.length,
-        total_weight_kg: Math.round(totalWt * 100) / 100,
-        total_payouts_inr: Math.round(totalPayout * 100) / 100,
-        verified_recyclers_count: 1,
-        category_breakdown: Object.entries(catCount).map(([cat, val]) => ({
-          category: cat,
-          count: val.count,
-          weight_kg: Math.round(val.weight * 100) / 100,
-        })),
+        assigned_weight_kg: finalLotList.reduce((sum, lot) => sum + lot.weight_kg, 0),
+        paid_total_inr: finalLotList.reduce(
+          (sum, lot) => sum + (lot.payment_status === 'paid' ? lot.final_sale_value || 0 : 0),
+          0,
+        ),
+        active_lots: finalLotList.filter(lot => lot.status !== 'closed').length,
+        material_categories: new Set(finalLotList.map(lot => lot.category)).size,
       });
-    } catch {
-      // Graceful error fallback
+    } catch (error) {
+      setLots([]);
+      setStats(null);
+      setLoadError(error instanceof Error ? error.message : 'Could not load assigned lots.');
     } finally {
       setLoading(false);
     }

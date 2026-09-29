@@ -32,7 +32,7 @@ export const Navigation: React.FC = () => {
 
   const changeLanguage = (lang: string) => {
     i18n.changeLanguage(lang);
-    localStorage.setItem('kabadiwala_lang', lang);
+    window.localStorage?.setItem('kabadiwala_lang', lang);
   };
 
   const isRecycler = user?.role === 'recycler';

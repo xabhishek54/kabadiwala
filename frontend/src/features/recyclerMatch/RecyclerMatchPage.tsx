@@ -108,6 +108,19 @@ const NETWORK_FALLBACK_RECYCLERS = [
   },
 ];
 
+function getCurrentCoordinates(): Promise<{ lat: number; lng: number }> {
+  if (!navigator.geolocation) {
+    return Promise.reject(new Error('LOCATION_UNAVAILABLE'));
+  }
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve({ lat: position.coords.latitude, lng: position.coords.longitude }),
+      () => reject(new Error('LOCATION_PERMISSION_REQUIRED')),
+      { enableHighAccuracy: false, maximumAge: 120000, timeout: 10000 }
+    );
+  });
+}
+
 export const RecyclerMatchPage: React.FC = () => {
   const { lotId } = useParams<{ lotId?: string }>();
   const navigate = useNavigate();
@@ -138,6 +151,22 @@ export const RecyclerMatchPage: React.FC = () => {
           weight = mat.approx_weight_kg || 2.5;
           lotFound = true;
         }
+      } catch (error) {
+        console.error('Unable to load authorized recycler matches:', error);
+        const errorMessage = error instanceof Error ? error.message : '';
+        if (errorMessage === 'LOCATION_UNAVAILABLE' || errorMessage === 'LOCATION_PERMISSION_REQUIRED') {
+          setMatchError(isEn
+            ? 'Allow location access to find nearby recyclers. Your saved lot is safe.'
+            : 'आस-पास के रीसायकलर खोजने के लिए स्थान की अनुमति दें। आपका लॉट सुरक्षित है।');
+        } else {
+          setMatchError(
+            navigator.onLine
+              ? (isEn ? 'We could not load recycler offers. Check your connection and try again.' : 'रीसायकलर ऑफ़र लोड नहीं हुए। कनेक्शन जाँचकर फिर कोशिश करें।')
+              : (isEn ? 'Recycler matching needs an internet connection. Your saved lot is safe; try again when you are online.' : 'रीसायकलर खोजने के लिए इंटरनेट चाहिए। आपका लॉट सुरक्षित है; ऑनलाइन आने पर फिर कोशिश करें।')
+          );
+        }
+      } finally {
+        setLoading(false);
       }
       setHasValidLot(lotFound);
 
@@ -373,6 +402,28 @@ export const RecyclerMatchPage: React.FC = () => {
 
   const toggleExpand = (id: string) => {
     setExpandedRecyclerId(prev => prev === id ? null : id);
+  };
+
+  const retryMatching = () => {
+    setMatchError(null);
+    setLoading(true);
+    if (lotId) {
+      db.materials.get(lotId).then(async (mat) => {
+        if (!mat) return;
+        const { lat, lng } = await getCurrentCoordinates();
+        const matchResults = await fetchRecyclerMatches(mat.material_category, lat, lng);
+        const verifiedMatches = matchResults.filter(
+          (item: any) => item.recycler?.authorization_status === 'verified'
+        );
+        setMatches(verifiedMatches);
+        if (verifiedMatches.length > 0) {
+          await db.recyclers.bulkPut(verifiedMatches.map((item: any) => item.recycler));
+        }
+      }).catch((error) => {
+        console.error('Unable to retry recycler matching:', error);
+        setMatchError(isEn ? 'Still unable to load offers. Please try again later.' : 'ऑफ़र अभी लोड नहीं हुए। कृपया बाद में कोशिश करें।');
+      }).finally(() => setLoading(false));
+    }
   };
 
   return (

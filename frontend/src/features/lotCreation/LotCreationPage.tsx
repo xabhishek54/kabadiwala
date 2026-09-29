@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import imageCompression from 'browser-image-compression';
 import { db } from '../../data/local/db';
 import { classifyImageClient } from '../../utils/mlClassifier';
 import {
@@ -397,8 +398,10 @@ export const LotCreationPage: React.FC = () => {
         created_at: nowIso,
         synced: false,
       });
+      navigate(shouldMatchImmediately ? `/match/${clientUuid}` : '/ledger');
     } catch (err) {
-      console.warn('Local Dexie save error:', err);
+      console.error('Local lot save failed:', err);
+      setSaveError(isEn ? 'We could not save this lot. Your data has not been submitted; please try again.' : 'लॉट सेव नहीं हुआ। डेटा नहीं भेजा गया है; कृपया फिर कोशिश करें।');
     } finally {
       setIsSaving(false);
       if (shouldMatchRecycler) {

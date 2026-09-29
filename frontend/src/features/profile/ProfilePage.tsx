@@ -106,9 +106,9 @@ export const ProfilePage: React.FC = () => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('kabadiwala_user');
-    localStorage.removeItem('kabadiwala_shop_code');
-    localStorage.removeItem('kabadiwala_account_type');
+    window.localStorage?.removeItem('kabadiwala_user');
+    window.localStorage?.removeItem('kabadiwala_shop_code');
+    window.localStorage?.removeItem('kabadiwala_account_type');
     window.location.href = '/login';
   };
 
@@ -177,7 +177,7 @@ export const ProfilePage: React.FC = () => {
 
   // Live collector activity stats from local DB
   const collectorIdForStats: string = (() => {
-    try { const u = JSON.parse(localStorage.getItem('kabadiwala_user') || '{}'); return u.id || u.phone || ''; } catch { return ''; }
+    try { const u = JSON.parse(window.localStorage?.getItem('kabadiwala_user') || '{}'); return u.id || u.phone || ''; } catch { return ''; }
   })();
   const myMaterials = useLiveQuery(
     () => collectorIdForStats ? db.materials.where('collector_id').equals(collectorIdForStats).toArray() : Promise.resolve([]),
@@ -599,7 +599,7 @@ export const ProfilePage: React.FC = () => {
                 <span>Linked Shop</span>
               </h3>
               {(() => {
-                const raw = localStorage.getItem('kabadiwala_user');
+                const raw = window.localStorage?.getItem('kabadiwala_user');
                 const u = raw ? JSON.parse(raw) : null;
                 return u?.parentShopCode ? (
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">

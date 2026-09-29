@@ -30,27 +30,33 @@ export async function flushSyncOutbox(): Promise<{ processed: number; success: b
 
     const result = await pushSyncOutbox(collectorId, payloadItems);
 
-    if (result && result.results) {
-      for (const res of result.results) {
+    if (result && Array.isArray(result.results)) {
+      for (const [index, res] of result.results.entries()) {
         if (res.status === 'synced') {
-          await db.syncOutbox.where('client_uuid').equals(res.client_uuid).modify({ synced: true });
+          const outboxItem = unsyncedItems[index];
+          if (outboxItem?.id !== undefined && outboxItem.client_uuid === res.client_uuid) {
+            await db.syncOutbox.update(outboxItem.id, { synced: true });
+          }
         }
       }
     }
 
     // Pull delta updates after push
     try {
-      const delta = await pullSyncData('Pune');
+      const district = window.localStorage?.getItem('kabadiwala_district') || 'Pune';
+      const delta = await pullSyncData(district);
       if (delta && delta.prices && delta.prices.length > 0) {
         for (const p of delta.prices) {
+          const price = Number(p.buying_price);
+          if (!Number.isFinite(price) || price <= 0) continue;
           await db.priceCache.put({
             category: p.material_category,
             sub_category: p.sub_category,
-            district: 'Pune',
-            current_price: p.buying_price,
-            market_range_low: Math.round(p.buying_price * 0.9),
-            market_range_high: Math.round(p.buying_price * 1.1),
-            informal_reference_price: Math.round(p.buying_price * 0.85),
+            district,
+            current_price: price,
+            market_range_low: Math.round(price * 0.9),
+            market_range_high: Math.round(price * 1.1),
+            informal_reference_price: Math.round(price * 0.85),
             trend_direction: 'flat',
             trend_slope: 0.0,
             updated_at: p.observed_at,
@@ -62,7 +68,13 @@ export async function flushSyncOutbox(): Promise<{ processed: number; success: b
     }
 
     isSyncing = false;
-    return { processed: unsyncedItems.length, success: true };
+    const successfulItems = Array.isArray(result?.results)
+      ? result.results.filter((item: { status: string }) => item.status === 'synced').length
+      : 0;
+    return {
+      processed: successfulItems,
+      success: successfulItems === unsyncedItems.length,
+    };
   } catch (error) {
     console.warn('Background sync push failed, will retry on next online event:', error);
     isSyncing = false;

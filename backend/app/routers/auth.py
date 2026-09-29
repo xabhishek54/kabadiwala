@@ -81,7 +81,7 @@ def signup_collector(payload: CollectorCreate, db: Session = Depends(get_db)):
     if existing:
         return existing
 
-    collector_data = payload.dict(exclude_unset=True)
+    collector_data = payload.model_dump(exclude_unset=True)
 
     # Generate shop_code for shop owners
     if payload.account_type == AccountType.shop and not payload.shop_code:
@@ -105,7 +105,7 @@ def signup_recycler(payload: RecyclerCreate, db: Session = Depends(get_db)):
     if existing:
         return existing
 
-    recycler_data = payload.dict(exclude_unset=True)
+    recycler_data = payload.model_dump(exclude_unset=True)
     recycler = Recycler(**recycler_data)
     db.add(recycler)
     db.commit()

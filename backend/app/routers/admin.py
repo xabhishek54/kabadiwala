@@ -4,11 +4,24 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
 from app.models.recycler import Recycler
+from app.models.collector import Collector
 from app.models.material import Material
 from app.models.transaction import Transaction
-from app.models.enums import AuthorizationStatus, MaterialCategory, MineralEnum, TransactionStatus, PaymentStatus
+from app.models.traceability import TraceabilityEvent
+from app.models.enums import AuthorizationStatus, EventActor, MaterialCategory, TransactionStatus, PaymentStatus
 from app.services.anomaly_detector import detect_transaction_anomalies
 from app.auth import require_roles
+
+# Valid lot state-machine transitions (mirrors lots.py)
+VALID_TRANSITIONS = {
+    TransactionStatus.draft: [TransactionStatus.quoted, TransactionStatus.draft],
+    TransactionStatus.quoted: [TransactionStatus.matched, TransactionStatus.draft],
+    TransactionStatus.matched: [TransactionStatus.handed_over, TransactionStatus.draft],
+    TransactionStatus.handed_over: [TransactionStatus.confirmed],
+    TransactionStatus.confirmed: [TransactionStatus.paid],
+    TransactionStatus.paid: [TransactionStatus.closed],
+    TransactionStatus.closed: [],
+}
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_roles("recycler", "admin"))])
 
@@ -90,21 +103,30 @@ def update_lot_status(
         if not material:
             raise HTTPException(status_code=404, detail=f"Lot or material '{lot_id}' not found")
 
-        tx = Transaction(
-            lot_id=lot_id,
-            collector_id=material.collector_id,
-            status=new_status,
-            quoted_price=material.estimated_value,
-            payment_status=PaymentStatus.paid if final_sale_value is not None else PaymentStatus.unpaid
+    if new_status not in VALID_TRANSITIONS[tx.status]:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Invalid transition from {tx.status.value} to {new_status.value}",
         )
-        db.add(tx)
-    else:
-        tx.status = new_status
+    if final_sale_value is not None and final_sale_value <= 0:
+        raise HTTPException(status_code=400, detail="Final sale value must be positive")
+    if new_status == TransactionStatus.paid and not (final_sale_value or tx.final_sale_value):
+        raise HTTPException(status_code=400, detail="A final sale value is required before marking the lot paid")
+
+    tx.status = new_status
 
     if final_sale_value is not None:
         tx.final_sale_value = final_sale_value
+
+    if new_status == TransactionStatus.paid:
         tx.payment_status = PaymentStatus.paid
 
+    db.add(TraceabilityEvent(
+        lot_id=lot_id,
+        event_type=new_status,
+        actor=EventActor.admin,
+        notes=f"Admin transitioned lot to {new_status.value}",
+    ))
     db.commit()
     return {"message": "Status updated successfully", "lot_id": lot_id, "status": tx.status.value}
 
@@ -167,7 +189,8 @@ def resolve_flagged_anomaly(
     action = payload.action if (payload and payload.action) else "clean"
     tx = db.query(Transaction).filter(Transaction.lot_id == lot_id).first()
     
-    note = f"Anomaly flag for lot {lot_id} marked as {action.upper()} by admin."
+    # This exact notes string is checked by detect_transaction_anomalies to skip resolved lots
+    note = "Anomaly review resolved"
     if tx:
         if action == "fraud":
             tx.status = TransactionStatus.closed
@@ -175,7 +198,7 @@ def resolve_flagged_anomaly(
         event = TraceabilityEvent(
             lot_id=lot_id,
             event_type=tx.status,
-            actor=EventActor.recycler,
+            actor=EventActor.admin,
             notes=note,
         )
         db.add(event)
@@ -185,7 +208,7 @@ def resolve_flagged_anomaly(
         event = TraceabilityEvent(
             lot_id=lot_id,
             event_type=TransactionStatus.draft,
-            actor=EventActor.recycler,
+            actor=EventActor.admin,
             notes=note,
         )
         db.add(event)
@@ -195,12 +218,12 @@ def resolve_flagged_anomaly(
         "status": "resolved",
         "action": action,
         "lot_id": lot_id,
-        "message": note,
+        "message": f"Anomaly flag for lot {lot_id} marked as {action.upper()} by admin.",
     }
 
 
 @router.get("/minerals/impact")
-def get_critical_minerals_impact(district: str = "Pune District & Maharashtra Hub", db: Session = Depends(get_db)):
+def get_critical_minerals_impact(district: str = "Pune", db: Session = Depends(get_db)):
     """
     Returns estimated critical minerals recovery totals based on processed e-waste volume.
     Translates raw e-waste tonnage into strategic mineral values (Li, Co, Nd, Ta, Ga, In, Cu).
@@ -220,6 +243,7 @@ def get_critical_minerals_impact(district: str = "Pune District & Maharashtra Hu
         "unit": "grams",
         "district": district,
         "total_e_waste_processed_kg": round(float(total_weight), 2),
+        "estimate_basis": "Theoretical material-composition factors; not measured recovery.",
         "mineral_estimates": {
             "copper": copper_g,
             "lithium": lithium_g,

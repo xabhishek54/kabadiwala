@@ -1,6 +1,6 @@
 from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from app.models.enums import TransactionStatus, EventActor
 
 class TraceabilityEventBase(BaseModel):
@@ -21,5 +21,4 @@ class TraceabilityEventResponse(TraceabilityEventBase):
     event_id: str
     timestamp: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

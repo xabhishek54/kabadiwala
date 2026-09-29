@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.recycler import Recycler
+from app.models.material import Material
+from app.models.transaction import Transaction
 from app.models.price import PriceObservation
 from app.models.enums import AuthorizationStatus, MaterialCategory, ObservationSource, ObservationUnit, PriceChannel
 from app.schemas.recycler import RecyclerCreate, RecyclerResponse, RecyclerMatchResponse
@@ -14,7 +16,7 @@ router = APIRouter(prefix="/recyclers", tags=["recyclers"])
 
 @router.post("", response_model=RecyclerResponse, status_code=status.HTTP_201_CREATED)
 def register_recycler(payload: RecyclerCreate, db: Session = Depends(get_db)):
-    recycler_data = payload.dict(exclude_unset=True)
+    recycler_data = payload.model_dump(exclude_unset=True)
     recycler = Recycler(**recycler_data)
     db.add(recycler)
     db.commit()
@@ -40,6 +42,36 @@ def get_recycler(recycler_id: str, db: Session = Depends(get_db), _: dict = Depe
     if not recycler:
         raise HTTPException(status_code=404, detail="Recycler not found")
     return recycler
+
+@router.get("/{recycler_id}/lots", response_model=List[dict])
+def list_recycler_lots(recycler_id: str, db: Session = Depends(get_db)):
+    recycler = db.query(Recycler).filter(Recycler.recycler_id == recycler_id).first()
+    if not recycler:
+        raise HTTPException(status_code=404, detail="Recycler not found")
+
+    transactions = db.query(Transaction).join(
+        Material, Material.lot_id == Transaction.lot_id
+    ).filter(
+        Transaction.recycler_id == recycler_id
+    ).order_by(Transaction.updated_at.desc()).all()
+
+    return [
+        {
+            "lot_id": tx.lot_id,
+            "category": tx.material.material_category.value,
+            "sub_category": tx.material.sub_category,
+            "weight_kg": tx.material.approx_weight_kg,
+            "condition": tx.material.condition.value,
+            "estimated_value": tx.material.estimated_value,
+            "collector_id": tx.collector_id,
+            "status": tx.status.value,
+            "final_sale_value": tx.final_sale_value,
+            "payment_status": tx.payment_status.value,
+            "recycler_id": tx.recycler_id,
+            "created_at": tx.created_at.isoformat() if tx.created_at else None,
+        }
+        for tx in transactions
+    ]
 
 @router.patch("/{recycler_id}/verify", response_model=RecyclerResponse)
 def update_authorization_status(
@@ -112,7 +144,7 @@ def match_recyclers(
         )
 
         matches.append(RecyclerMatchResponse(
-            recycler=RecyclerResponse.from_orm(recycler),
+            recycler=RecyclerResponse.model_validate(recycler),
             distance_km=round(dist, 2),
             score=blended_score,
             rate_for_category=rate_val,

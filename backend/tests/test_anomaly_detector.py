@@ -4,31 +4,17 @@ Tests for Phase 8: MAD Anomaly Detector Service & /admin/anomalies endpoint.
 Spec ref: 05-ml-ai-guide.md §5, 02-features-implementation.md §8
 """
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
-from app.main import app
-from app.database import Base, get_db
 from app.models.collector import Collector
 from app.models.material import Material
 from app.models.transaction import Transaction
+from app.models.traceability import TraceabilityEvent
 from app.models.enums import MaterialCategory, MaterialCondition, TransactionStatus
 from app.services.anomaly_detector import compute_mad, detect_transaction_anomalies
 
-TEST_DATABASE_URL = "sqlite:///./test.db"
-test_engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+# Import shared test infrastructure from conftest
+from tests.helpers import client, TestingSessionLocal
 
-def override_get_db():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-app.dependency_overrides[get_db] = override_get_db
-client = TestClient(app)
 
 def test_compute_mad_calculation():
     # Dataset: [10, 12, 14, 15, 16, 18, 100] (100 is outlier)
@@ -37,13 +23,19 @@ def test_compute_mad_calculation():
     assert med == 15.0
     assert mad > 0
 
+
 class TestAnomalyDetector:
     @pytest.fixture(autouse=True)
-    def setup_db(self):
-        Base.metadata.create_all(bind=test_engine)
+    def seed_anomaly_data(self):
+        """Seed data needed for anomaly detector tests (runs after the global reset_db)."""
         db = TestingSessionLocal()
 
-        c = Collector(collector_id="c_anom", display_name="Test Collector", phone_number="9111111111", operating_locality="Pune")
+        c = Collector(
+            collector_id="c_anom",
+            display_name="Test Collector",
+            phone_number="9111111111",
+            operating_locality="Pune",
+        )
         db.add(c)
 
         # Normal lots around ₹300/kg
@@ -57,7 +49,12 @@ class TestAnomalyDetector:
                 estimated_value=3000.0,
                 collector_id="c_anom",
             )
-            t = Transaction(lot_id=f"lot-norm-{i}", collector_id="c_anom", status=TransactionStatus.confirmed, final_sale_value=3000.0)
+            t = Transaction(
+                lot_id=f"lot-norm-{i}",
+                collector_id="c_anom",
+                status=TransactionStatus.confirmed,
+                final_sale_value=3000.0,
+            )
             db.add(m)
             db.add(t)
 
@@ -71,7 +68,12 @@ class TestAnomalyDetector:
             estimated_value=30000.0,
             collector_id="c_anom",
         )
-        t_anom1 = Transaction(lot_id="lot-anom-1", collector_id="c_anom", status=TransactionStatus.confirmed, final_sale_value=30000.0)
+        t_anom1 = Transaction(
+            lot_id="lot-anom-1",
+            collector_id="c_anom",
+            status=TransactionStatus.confirmed,
+            final_sale_value=30000.0,
+        )
         db.add(m_anom1)
         db.add(t_anom1)
 
@@ -85,20 +87,18 @@ class TestAnomalyDetector:
             estimated_value=3200.0,
             collector_id="c_anom",
         )
-        t_anom2 = Transaction(lot_id="lot-anom-2", collector_id="c_anom", status=TransactionStatus.confirmed, final_sale_value=3200.0)
+        t_anom2 = Transaction(
+            lot_id="lot-anom-2",
+            collector_id="c_anom",
+            status=TransactionStatus.confirmed,
+            final_sale_value=3200.0,
+        )
         db.add(m_anom2)
         db.add(t_anom2)
 
         db.commit()
         db.close()
         yield
-
-        db_cleanup = TestingSessionLocal()
-        db_cleanup.query(Transaction).filter(Transaction.collector_id == "c_anom").delete()
-        db_cleanup.query(Material).filter(Material.collector_id == "c_anom").delete()
-        db_cleanup.query(Collector).filter(Collector.collector_id == "c_anom").delete()
-        db_cleanup.commit()
-        db_cleanup.close()
 
     def test_detect_anomalies_service(self):
         db = TestingSessionLocal()
@@ -113,3 +113,12 @@ class TestAnomalyDetector:
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
+
+    def test_resolved_anomaly_is_persistently_removed_from_open_queue(self):
+        response = client.patch("/admin/anomalies/lot-anom-1/resolve")
+        assert response.status_code == 200
+
+        db = TestingSessionLocal()
+        anomalies = detect_transaction_anomalies(db=db)
+        db.close()
+        assert "lot-anom-1" not in [item["lot_id"] for item in anomalies]

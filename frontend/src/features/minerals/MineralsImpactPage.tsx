@@ -10,11 +10,13 @@ interface MineralImpactData {
 }
 
 export const MineralsImpactPage: React.FC = () => {
-  const [data, setData] = useState<MineralImpactData | null>(null);
+  const [data, setData] = useState<MineralImpactRecord | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState('');
 
   const fetchImpact = async () => {
     setLoading(true);
+    setError('');
     try {
       const res = await fetch(`${API_BASE_URL}/admin/minerals/impact`);
       if (res.ok) {
@@ -198,6 +200,7 @@ export const MineralsImpactPage: React.FC = () => {
         <p className="text-xs leading-relaxed text-amber-800 font-medium">
           This JNARDDC-compliant portal converts verified e-waste handover transactions into real-time critical mineral recovery estimates (Lithium, Cobalt, Neodymium, Tantalum), ensuring 100% material traceability from informal scrap collectors to licensed recycling refineries.
         </p>
+        {data && <p className="text-[11px] leading-relaxed text-amber-800">{data.estimate_basis}</p>}
       </div>
     </div>
   );

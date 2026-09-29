@@ -88,6 +88,7 @@ def _train_model(observations: list):
 def refine_price(
     *,
     category: str,
+    sub_category: Optional[str] = None,
     weight_kg: float,
     condition: str,
     district: str,
@@ -110,12 +111,22 @@ def refine_price(
         db.query(PriceObservation)
         .filter(
             PriceObservation.material_category == category,
+            PriceObservation.location_district == district,
             PriceObservation.observed_at >= cutoff,
         )
         .all()
     )
-    district_obs = [o for o in obs_all if o.location_district == district]
-    prices = [o.buying_price for o in district_obs] if district_obs else [o.buying_price for o in obs_all]
+    if sub_category:
+        normalized_subcategory = sub_category.lower().replace("_", "").replace(" ", "")
+        exact_subcategory_obs = [
+            observation
+            for observation in obs_all
+            if observation.sub_category.lower().replace("_", "").replace(" ", "")
+            == normalized_subcategory
+        ]
+        if exact_subcategory_obs:
+            obs_all = exact_subcategory_obs
+    prices = [observation.buying_price for observation in obs_all]
 
     if prices:
         base_price_per_kg = float(np.median(prices))

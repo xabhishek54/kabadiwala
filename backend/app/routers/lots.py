@@ -6,6 +6,7 @@ from app.models.material import Material
 from app.models.transaction import Transaction
 from app.models.traceability import TraceabilityEvent
 from app.models.enums import TransactionStatus, EventActor
+from app.services.lot_lifecycle import VALID_TRANSITIONS
 from app.schemas.material import MaterialCreate, MaterialResponse
 from app.schemas.transaction import TransactionResponse
 from app.auth import require_auth

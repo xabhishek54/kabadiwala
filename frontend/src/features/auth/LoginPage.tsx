@@ -72,7 +72,7 @@ export const LoginPage: React.FC = () => {
         role,
         isNew: true,
       };
-      localStorage.setItem('kabadiwala_user', JSON.stringify(userObj));
+      window.localStorage?.setItem('kabadiwala_user', JSON.stringify(userObj));
       navigate(role === 'recycler' ? '/onboarding/recycler' : '/onboarding/collector');
     }
   };
