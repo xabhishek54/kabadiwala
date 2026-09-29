@@ -4,10 +4,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
 from app.models.recycler import Recycler
+from app.models.collector import Collector
 from app.models.material import Material
 from app.models.transaction import Transaction
-from app.models.enums import AuthorizationStatus, MaterialCategory, MineralEnum, TransactionStatus, PaymentStatus
+from app.models.traceability import TraceabilityEvent
+from app.models.enums import AuthorizationStatus, EventActor, MaterialCategory, TransactionStatus, PaymentStatus
 from app.services.anomaly_detector import detect_transaction_anomalies
+from app.services.lot_lifecycle import VALID_TRANSITIONS
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -85,34 +88,32 @@ def update_lot_status(
 
     tx = db.query(Transaction).filter(Transaction.lot_id == lot_id).first()
     if not tx:
-        material = db.query(Material).filter(Material.lot_id == lot_id).first()
-        if not material:
-            material = Material(
-                lot_id=lot_id,
-                material_category=MaterialCategory.PCB,
-                sub_category="PCB",
-                approx_weight_kg=5.0,
-                estimated_value=1200.0,
-                collector_id="col-001"
-            )
-            db.add(material)
-            db.commit()
+        raise HTTPException(status_code=404, detail="Transaction not found")
 
-        tx = Transaction(
-            lot_id=lot_id,
-            collector_id=material.collector_id,
-            status=new_status,
-            quoted_price=material.estimated_value,
-            payment_status=PaymentStatus.paid if final_sale_value is not None else PaymentStatus.unpaid
+    if new_status not in VALID_TRANSITIONS[tx.status]:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Invalid transition from {tx.status.value} to {new_status.value}",
         )
-        db.add(tx)
-    else:
-        tx.status = new_status
+    if final_sale_value is not None and final_sale_value <= 0:
+        raise HTTPException(status_code=400, detail="Final sale value must be positive")
+    if new_status == TransactionStatus.paid and not (final_sale_value or tx.final_sale_value):
+        raise HTTPException(status_code=400, detail="A final sale value is required before marking the lot paid")
+
+    tx.status = new_status
 
     if final_sale_value is not None:
         tx.final_sale_value = final_sale_value
+
+    if new_status == TransactionStatus.paid:
         tx.payment_status = PaymentStatus.paid
 
+    db.add(TraceabilityEvent(
+        lot_id=lot_id,
+        event_type=new_status,
+        actor=EventActor.admin,
+        notes=f"Admin transitioned lot to {new_status.value}",
+    ))
     db.commit()
     return {"message": "Status updated successfully", "lot_id": lot_id, "status": tx.status.value}
 
@@ -160,8 +161,23 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
 @router.patch("/anomalies/{lot_id}/resolve")
 def resolve_flagged_anomaly(lot_id: str, db: Session = Depends(get_db)):
     """Mark an anomaly audit flag as resolved by admin."""
-    # Ensure lot exists or mock resolve
-    material = db.query(Material).filter(Material.lot_id == lot_id).first()
+    tx = db.query(Transaction).filter(Transaction.lot_id == lot_id).first()
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    existing_resolution = db.query(TraceabilityEvent).filter(
+        TraceabilityEvent.lot_id == lot_id,
+        TraceabilityEvent.actor == EventActor.admin,
+        TraceabilityEvent.notes == "Anomaly review resolved",
+    ).first()
+    if not existing_resolution:
+        db.add(TraceabilityEvent(
+            lot_id=lot_id,
+            event_type=tx.status,
+            actor=EventActor.admin,
+            notes="Anomaly review resolved",
+        ))
+        db.commit()
     return {
         "status": "resolved",
         "lot_id": lot_id,
@@ -170,12 +186,23 @@ def resolve_flagged_anomaly(lot_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/minerals/impact")
-def get_critical_minerals_impact(district: str = "Pune District & Maharashtra Hub", db: Session = Depends(get_db)):
+def get_critical_minerals_impact(district: str = "Pune", db: Session = Depends(get_db)):
     """
     Returns estimated critical minerals recovery totals based on processed e-waste volume.
     Translates raw e-waste tonnage into strategic mineral values (Li, Co, Nd, Ta, Ga, In, Cu).
     """
-    total_weight = db.query(func.sum(Material.approx_weight_kg)).scalar() or 1250.0
+    weight_query = db.query(func.sum(Material.approx_weight_kg)).join(
+        Transaction, Transaction.lot_id == Material.lot_id
+    ).join(
+        Collector, Collector.collector_id == Transaction.collector_id
+    ).filter(
+        Transaction.status.in_([TransactionStatus.paid, TransactionStatus.closed]),
+        Transaction.payment_status == PaymentStatus.paid,
+        Transaction.final_sale_value.isnot(None),
+    )
+    if district.strip():
+        weight_query = weight_query.filter(Collector.operating_locality.ilike(f"%{district.strip()}%"))
+    total_weight = weight_query.scalar() or 0.0
 
     # Convert kg to mineral gram estimates
     copper_g = round(total_weight * 200.0, 1)    # 200g Cu / kg e-waste
@@ -190,6 +217,7 @@ def get_critical_minerals_impact(district: str = "Pune District & Maharashtra Hu
         "unit": "grams",
         "district": district,
         "total_e_waste_processed_kg": round(float(total_weight), 2),
+        "estimate_basis": "Theoretical material-composition factors; not measured recovery.",
         "mineral_estimates": {
             "copper": copper_g,
             "lithium": lithium_g,
@@ -200,4 +228,3 @@ def get_critical_minerals_impact(district: str = "Pune District & Maharashtra Hu
             "indium": indium_g,
         },
     }
-

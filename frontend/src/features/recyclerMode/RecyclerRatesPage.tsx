@@ -1,25 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { Save, CheckCircle2, Factory, RefreshCw } from 'lucide-react';
-import { updateRecyclerRates } from '../../data/remote/apiClient';
+import {
+  fetchRecyclerProfile,
+  updateRecyclerConfig,
+  updateRecyclerRates,
+} from '../../data/remote/apiClient';
 
 export const RecyclerRatesPage: React.FC = () => {
-  const [recyclerId, setRecyclerId] = useState('rec-pune-001');
-  const [recyclerName, setRecyclerName] = useState('EcoRecycle India');
-  const [rates, setRates] = useState<Record<string, number>>({
-    PCB: 260.0,
-    BATTERY: 90.0,
-    CABLE: 150.0,
-    LCD_PANEL: 110.0,
-    CRT: 40.0,
-    MOTOR_MAGNET: 70.0,
-    MIXED_PLASTIC: 25.0,
-  });
+  const [recyclerId, setRecyclerId] = useState('');
+  const [recyclerName, setRecyclerName] = useState('Recycler');
+  const [authorizationStatus, setAuthorizationStatus] = useState('');
+  const [rates, setRates] = useState<Record<string, number>>({});
 
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
-  const [pickupAvailable, setPickupAvailable] = useState(true);
-  const [serviceRadius, setServiceRadius] = useState<number>(10);
-  const [materialsAccepted, setMaterialsAccepted] = useState<string[]>(['PCB', 'BATTERY', 'CABLE']);
+  const [error, setError] = useState('');
+  const [pickupAvailable, setPickupAvailable] = useState(false);
+  const [serviceRadius, setServiceRadius] = useState<number>(25);
+  const [materialsAccepted, setMaterialsAccepted] = useState<string[]>([]);
 
   const allMaterials = ['PCB', 'BATTERY', 'CABLE', 'LCD_PANEL', 'CRT', 'MOTOR_MAGNET', 'MIXED_PLASTIC', 'IRON', 'ALUMINIUM', 'NEWSPAPER'];
 
@@ -28,14 +27,34 @@ export const RecyclerRatesPage: React.FC = () => {
   };
 
   useEffect(() => {
-    const rawUser = localStorage.getItem('kabadiwala_user');
-    if (rawUser) {
+    let isMounted = true;
+    const loadProfile = async () => {
       try {
-        const u = JSON.parse(rawUser);
-        if (u.name) setRecyclerName(u.name);
-        if (u.recyclerId) setRecyclerId(u.recyclerId);
-      } catch {}
-    }
+        const rawUser = window.localStorage?.getItem('kabadiwala_user');
+        const user = rawUser ? JSON.parse(rawUser) : {};
+        const id = user.recycler_id || (user.role === 'recycler' ? user.id : '');
+        if (!id) throw new Error('Sign in with a recycler account to manage facility rates.');
+        const profile = await fetchRecyclerProfile(id);
+        if (!isMounted) return;
+        setRecyclerId(profile.recycler_id);
+        setRecyclerName(profile.name);
+        setAuthorizationStatus(profile.authorization_status);
+        setRates(Object.fromEntries(
+          allMaterials.map(category => [category, profile.offered_rates[category] || 0]),
+        ));
+        setPickupAvailable(profile.pickup_available);
+        setServiceRadius(profile.service_radius_km);
+        setMaterialsAccepted(profile.materials_accepted);
+      } catch (loadError) {
+        if (isMounted) {
+          setError(loadError instanceof Error ? loadError.message : 'Could not load recycler profile.');
+        }
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+    void loadProfile();
+    return () => { isMounted = false; };
   }, []);
 
   const categoryLabels: Record<string, { label: string; icon: string }> = {
@@ -54,23 +73,32 @@ export const RecyclerRatesPage: React.FC = () => {
   };
 
   const handleSaveRates = async () => {
+    setError('');
+    const activeRates = Object.fromEntries(
+      Object.entries(rates).filter(
+        ([category, rate]) => materialsAccepted.includes(category) && Number.isFinite(rate) && rate > 0,
+      ),
+    );
+    if (!recyclerId) {
+      setError('Recycler account is not available. Sign in again and retry.');
+      return;
+    }
+    if (Object.keys(activeRates).length === 0) {
+      setError('Select an accepted material and enter a positive buying rate.');
+      return;
+    }
     setIsSaving(true);
     try {
-      await updateRecyclerRates(recyclerId, rates);
-      // Also update pickup/service config
-      await fetch(`http://localhost:8000/recyclers/${encodeURIComponent(recyclerId)}/config`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pickup_available: pickupAvailable,
-          service_radius_km: serviceRadius,
-          materials_accepted: materialsAccepted,
-        }),
-      }).catch(() => {}); // Non-fatal if endpoint not yet deployed
+      await updateRecyclerRates(recyclerId, activeRates);
+      await updateRecyclerConfig(recyclerId, {
+        pickup_available: pickupAvailable,
+        service_radius_km: serviceRadius,
+        materials_accepted: materialsAccepted,
+      });
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 3000);
-    } catch (e) {
-      console.error('Failed updating rates', e);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Could not save facility rates.');
     } finally {
       setIsSaving(false);
     }
@@ -94,6 +122,16 @@ export const RecyclerRatesPage: React.FC = () => {
         <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3 text-emerald-800 text-xs font-bold flex items-center space-x-2 animate-fade-in">
           <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
           <span>दर यशस्वीरित्या अपडेट झाले! (Buying rates updated successfully!)</span>
+        </div>
+      )}
+      {error && (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-800">
+          {error}
+        </div>
+      )}
+      {authorizationStatus === 'pending' && (
+        <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+          Your authorization is pending review. Rates are saved, but your facility will not be shown in recycler matches until verified.
         </div>
       )}
 
@@ -196,12 +234,12 @@ export const RecyclerRatesPage: React.FC = () => {
 
         <button
           type="button"
-          disabled={isSaving}
+          disabled={isSaving || isLoading || !recyclerId}
           onClick={handleSaveRates}
           className="w-full bg-stone-900 hover:bg-stone-800 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center space-x-2 shadow-md active:scale-95 transition-all text-xs disabled:opacity-50 mt-4"
         >
-          {isSaving ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
-          <span>{isSaving ? 'अपडेट होत आहे...' : 'Save Rates & Config'}</span>
+          {isSaving || isLoading ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
+          <span>{isLoading ? 'Loading facility…' : isSaving ? 'अपडेट होत आहे...' : 'Save Rates & Config'}</span>
         </button>
       </div>
     </div>

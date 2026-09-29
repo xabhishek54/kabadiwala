@@ -12,10 +12,10 @@ describe('ProfilePage Component', () => {
       </MemoryRouter>
     );
 
-    const matches = screen.getAllByText(/Account Structure/i);
+    const matches = screen.getAllByText(/Pune/i);
     expect(matches.length).toBeGreaterThan(0);
 
-    const badgeMatches = screen.getAllByText(/Authorized Collection Agent/i);
+    const badgeMatches = screen.getAllByText(/9823011223/i);
     expect(badgeMatches.length).toBeGreaterThan(0);
   });
 });

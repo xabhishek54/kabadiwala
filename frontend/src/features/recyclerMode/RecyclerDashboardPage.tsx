@@ -2,145 +2,66 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  Factory, Package, CheckCircle2, Search, Filter, IndianRupee,
-  Award, ShieldCheck, RefreshCw, Layers, ShieldAlert
+  Factory, Package, Search, Filter, IndianRupee,
+  RefreshCw, Layers, ShieldAlert
 } from 'lucide-react';
-import { db } from '../../data/local/db';
-
-interface AdminLot {
-  lot_id: string;
-  category: string;
-  sub_category: string;
-  weight_kg: number;
-  condition: string;
-  estimated_value: number;
-  image_ref?: string;
-  collector_id: string;
-  status: string;
-  final_sale_value?: number;
-  payment_status: string;
-  created_at?: string;
-  recycler_id?: string;
-}
+import { fetchRecyclerLots, type RecyclerLotRecord } from '../../data/remote/apiClient';
 
 interface DashboardStats {
-  total_lots: number;
-  total_weight_kg: number;
-  total_payouts_inr: number;
-  verified_recyclers_count: number;
-  category_breakdown: Array<{ category: string; count: number; weight_kg: number }>;
+  assigned_weight_kg: number;
+  paid_total_inr: number;
+  active_lots: number;
+  material_categories: number;
 }
 
 export const RecyclerDashboardPage: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
-  const userJson = typeof window !== 'undefined' ? localStorage.getItem('kabadiwala_user') : null;
-  const currentUser = userJson ? JSON.parse(userJson) : null;
-  const recyclerId = currentUser?.recycler_id || currentUser?.id || 'rec-pune-001';
-  const recyclerName = currentUser?.name || 'EcoRecycle India (Pune Hub)';
-  const mpcbRef = currentUser?.mpcb_ref || 'MPCB/E-WASTE/2024/089';
+  const currentUser = (() => {
+    try {
+      return JSON.parse(window.localStorage?.getItem('kabadiwala_user') || '{}');
+    } catch {
+      return {};
+    }
+  })();
+  const recyclerId = currentUser?.recycler_id || (currentUser?.role === 'recycler' ? currentUser?.id : '');
+  const recyclerName = currentUser?.name || 'Recycler';
 
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [lots, setLots] = useState<AdminLot[]>([]);
+  const [lots, setLots] = useState<RecyclerLotRecord[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
-  const [selectedLot, setSelectedLot] = useState<AdminLot | null>(null);
-  const [overridePrice, setOverridePrice] = useState<string>('');
-  const [actionLoading, setActionLoading] = useState<boolean>(false);
+  const [loadError, setLoadError] = useState('');
 
   const fetchData = async () => {
     setLoading(true);
+    setLoadError('');
+    if (!recyclerId) {
+      setLots([]);
+      setStats(null);
+      setLoadError('Sign in with a recycler account to view its assigned lots.');
+      setLoading(false);
+      return;
+    }
     try {
-      // 1. Local IndexedDB matched transactions
-      const localTxs = await db.transactions.toArray();
-      const matchedLocalTxs = localTxs.filter(t => !t.recycler_id || t.recycler_id === recyclerId);
-      const allLocalMats = await db.materials.toArray();
-      const localMatMap = new Map();
-      allLocalMats.forEach(m => localMatMap.set(m.lot_id, m));
-
-      const localLots: AdminLot[] = matchedLocalTxs.map(tx => {
-        const mat = localMatMap.get(tx.lot_id);
-        return {
-          lot_id: tx.lot_id,
-          category: tx.material_category,
-          sub_category: mat?.sub_category || tx.material_category,
-          weight_kg: mat?.approx_weight_kg || 5.0,
-          condition: mat?.condition || 'intact',
-          estimated_value: tx.final_sale_value || tx.quoted_price || mat?.estimated_value || 0,
-          collector_id: tx.collector_id,
-          status: tx.status,
-          final_sale_value: tx.final_sale_value,
-          payment_status: tx.payment_status || 'unpaid',
-          created_at: tx.created_at,
-          recycler_id: tx.recycler_id || recyclerId,
-        };
-      });
-
-      // 2. Backend lots
-      const lotsRes: AdminLot[] = await fetch('http://localhost:8000/admin/lots')
-        .then(r => (r.ok ? r.json() : []))
-        .catch(() => []);
-
-      // Scoped mock datasets for demo accounts
-      const facilityMockLots: Record<string, AdminLot[]> = {
-        'rec-pune-001': [
-          { lot_id: 'lot-pune-101', category: 'PCB', sub_category: 'Server Motherboards & RAM', weight_kg: 25.0, condition: 'intact', estimated_value: 6500, collector_id: 'col-demo-101', status: 'matched', payment_status: 'unpaid', recycler_id: 'rec-pune-001' },
-          { lot_id: 'lot-pune-102', category: 'BATTERY', sub_category: 'Li-Ion Laptop Battery Packs', weight_kg: 18.0, condition: 'damaged', estimated_value: 1620, collector_id: 'col-sub-001', status: 'confirmed', final_sale_value: 1620, payment_status: 'paid', recycler_id: 'rec-pune-001' },
-          { lot_id: 'lot-pune-103', category: 'CABLE', sub_category: 'Stripped Industrial Copper Wire', weight_kg: 32.0, condition: 'stripped', estimated_value: 4800, collector_id: 'col-sub-002', status: 'closed', final_sale_value: 4800, payment_status: 'paid', recycler_id: 'rec-pune-001' },
-        ],
-        'rec-mum-001': [
-          { lot_id: 'lot-mum-201', category: 'PCB', sub_category: 'Telecom Switching Racks & Gold PCBs', weight_kg: 45.0, condition: 'intact', estimated_value: 12825, collector_id: 'col-demo-101', status: 'matched', payment_status: 'unpaid', recycler_id: 'rec-mum-001' },
-          { lot_id: 'lot-mum-202', category: 'BATTERY', sub_category: 'Industrial UPS Battery Banks', weight_kg: 60.0, condition: 'intact', estimated_value: 6300, collector_id: 'col-ind-001', status: 'confirmed', final_sale_value: 6300, payment_status: 'paid', recycler_id: 'rec-mum-001' },
-        ],
-        'rec-pune-002': [
-          { lot_id: 'lot-chin-301', category: 'MOTOR_MAGNET', sub_category: 'Neodymium Stator Motor Assemblies', weight_kg: 40.0, condition: 'intact', estimated_value: 3000, collector_id: 'col-sub-001', status: 'matched', payment_status: 'unpaid', recycler_id: 'rec-pune-002' },
-          { lot_id: 'lot-chin-302', category: 'CRT', sub_category: 'Lead Glass Vacuum Tubes', weight_kg: 50.0, condition: 'damaged', estimated_value: 2000, collector_id: 'col-sub-002', status: 'closed', final_sale_value: 2000, payment_status: 'paid', recycler_id: 'rec-pune-002' },
-        ],
-      };
-
-      const fallbackList = facilityMockLots[recyclerId] || facilityMockLots['rec-pune-001'];
-
-      // Combine & deduplicate
-      const combined = [...localLots, ...lotsRes.filter(l => !l.recycler_id || l.recycler_id === recyclerId), ...fallbackList];
-      const uniqueLotsMap = new Map<string, AdminLot>();
-      combined.forEach(l => {
-        if (!uniqueLotsMap.has(l.lot_id)) uniqueLotsMap.set(l.lot_id, l);
-      });
-
-      const finalLotList = Array.from(uniqueLotsMap.values());
+      const finalLotList = await fetchRecyclerLots(recyclerId);
       setLots(finalLotList);
-
-      // Compute facility-specific dynamic stats
-      let totalWt = 0;
-      let totalPayout = 0;
-      const catCount: Record<string, { count: number; weight: number }> = {};
-
-      finalLotList.forEach(l => {
-        totalWt += l.weight_kg;
-        if (l.payment_status === 'paid' || l.status === 'closed') {
-          totalPayout += l.final_sale_value || l.estimated_value;
-        }
-        if (!catCount[l.category]) catCount[l.category] = { count: 0, weight: 0 };
-        catCount[l.category].count += 1;
-        catCount[l.category].weight += l.weight_kg;
-      });
-
       setStats({
-        total_lots: finalLotList.length,
-        total_weight_kg: Math.round(totalWt * 100) / 100,
-        total_payouts_inr: Math.round(totalPayout * 100) / 100,
-        verified_recyclers_count: 1,
-        category_breakdown: Object.entries(catCount).map(([cat, val]) => ({
-          category: cat,
-          count: val.count,
-          weight_kg: Math.round(val.weight * 100) / 100,
-        })),
+        assigned_weight_kg: finalLotList.reduce((sum, lot) => sum + lot.weight_kg, 0),
+        paid_total_inr: finalLotList.reduce(
+          (sum, lot) => sum + (lot.payment_status === 'paid' ? lot.final_sale_value || 0 : 0),
+          0,
+        ),
+        active_lots: finalLotList.filter(lot => lot.status !== 'closed').length,
+        material_categories: new Set(finalLotList.map(lot => lot.category)).size,
       });
-    } catch {
-      // Graceful error fallback
+    } catch (error) {
+      setLots([]);
+      setStats(null);
+      setLoadError(error instanceof Error ? error.message : 'Could not load assigned lots.');
     } finally {
       setLoading(false);
     }
@@ -149,32 +70,6 @@ export const RecyclerDashboardPage: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, [recyclerId]);
-
-  const handleUpdateStatus = async (newStatus: string) => {
-    if (!selectedLot) return;
-    setActionLoading(true);
-    const saleVal = overridePrice ? parseFloat(overridePrice) : selectedLot.estimated_value;
-
-    try {
-      const res = await fetch(`http://localhost:8000/admin/lots/${selectedLot.lot_id}/status?status=${newStatus}&final_sale_value=${saleVal}`, {
-        method: 'PATCH',
-      });
-      if (res.ok) {
-        setLots(prev =>
-          prev.map(l => (l.lot_id === selectedLot.lot_id ? { ...l, status: newStatus, final_sale_value: saleVal, payment_status: 'paid' } : l))
-        );
-        setSelectedLot(null);
-      }
-    } catch {
-      // offline optimism
-      setLots(prev =>
-        prev.map(l => (l.lot_id === selectedLot.lot_id ? { ...l, status: newStatus, final_sale_value: saleVal, payment_status: 'paid' } : l))
-      );
-      setSelectedLot(null);
-    } finally {
-      setActionLoading(false);
-    }
-  };
 
   const filteredLots = lots.filter(lot => {
     const matchesStatus = statusFilter === 'all' || lot.status === statusFilter;
@@ -197,12 +92,9 @@ export const RecyclerDashboardPage: React.FC = () => {
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <h2 className="text-xl font-bold tracking-tight">EcoRecycle India — Portal</h2>
-              <span className="bg-emerald-500/20 text-emerald-300 text-xs font-bold px-2.5 py-0.5 rounded-full border border-emerald-500/30 flex items-center space-x-1">
-                <ShieldCheck size={12} className="mr-0.5" /> MPCB Verified
-              </span>
+              <h2 className="text-xl font-bold tracking-tight">{recyclerName} — Portal</h2>
             </div>
-            <p className="text-xs text-stone-400 font-medium mt-0.5">Formal E-Waste Aggregator & Processing Hub (Pune District)</p>
+            <p className="text-xs text-stone-400 font-medium mt-0.5">Recycler facility and assigned lot dashboard</p>
           </div>
         </div>
 
@@ -225,15 +117,21 @@ export const RecyclerDashboardPage: React.FC = () => {
         </div>
       </div>
 
+      {loadError && (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+          {loadError}
+        </div>
+      )}
+
       {/* Metrics Banner */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-surface-card rounded-card p-4 border border-surface-border shadow-soft space-y-1">
           <div className="flex items-center justify-between text-stone-500 text-xs font-semibold">
-            <span>Total Intake</span>
+            <span>Assigned Material</span>
             <Package size={16} className="text-brand-600" />
           </div>
-          <p className="text-xl font-black text-stone-900">{stats ? `${stats.total_weight_kg} kg` : '0 kg'}</p>
-          <p className="text-[11px] text-emerald-600 font-medium">↑ 14% this month</p>
+          <p className="text-xl font-black text-stone-900">{stats ? `${stats.assigned_weight_kg.toFixed(2)} kg` : '—'}</p>
+          <p className="text-[11px] text-stone-500 font-medium">Across assigned lots</p>
         </div>
 
         <div className="bg-surface-card rounded-card p-4 border border-surface-border shadow-soft space-y-1">
@@ -241,8 +139,8 @@ export const RecyclerDashboardPage: React.FC = () => {
             <span>Disbursed Payouts</span>
             <IndianRupee size={16} className="text-emerald-600" />
           </div>
-          <p className="text-xl font-black text-stone-900">₹{stats ? stats.total_payouts_inr.toLocaleString('en-IN') : '0'}</p>
-          <p className="text-[11px] text-stone-500 font-medium">Direct cash & UPI</p>
+          <p className="text-xl font-black text-stone-900">₹{stats ? stats.paid_total_inr.toLocaleString('en-IN') : '—'}</p>
+          <p className="text-[11px] text-stone-500 font-medium">Recorded paid transactions</p>
         </div>
 
         <div className="bg-surface-card rounded-card p-4 border border-surface-border shadow-soft space-y-1">
@@ -250,17 +148,17 @@ export const RecyclerDashboardPage: React.FC = () => {
             <span>Active Lots</span>
             <Layers size={16} className="text-amber-600" />
           </div>
-          <p className="text-xl font-black text-stone-900">{stats ? stats.total_lots : 0}</p>
-          <p className="text-[11px] text-amber-600 font-medium">Pending verification</p>
+          <p className="text-xl font-black text-stone-900">{stats ? stats.active_lots : '—'}</p>
+          <p className="text-[11px] text-amber-600 font-medium">Not yet closed</p>
         </div>
 
         <div className="bg-surface-card rounded-card p-4 border border-surface-border shadow-soft space-y-1">
           <div className="flex items-center justify-between text-stone-500 text-xs font-semibold">
-            <span>Authorized Recyclers</span>
-            <Award size={16} className="text-purple-600" />
+            <span>Material Categories</span>
+            <Layers size={16} className="text-purple-600" />
           </div>
-          <p className="text-xl font-black text-stone-900">{stats ? stats.verified_recyclers_count : 1}</p>
-          <p className="text-[11px] text-purple-600 font-medium">Licensed facility</p>
+          <p className="text-xl font-black text-stone-900">{stats ? stats.material_categories : '—'}</p>
+          <p className="text-[11px] text-purple-600 font-medium">In assigned queue</p>
         </div>
       </div>
 
@@ -309,12 +207,16 @@ export const RecyclerDashboardPage: React.FC = () => {
 
       {/* Lot Queue Table / Cards */}
       <div className="space-y-3">
-        {filteredLots.length === 0 ? (
+        {loading ? (
+          <div className="bg-surface-card rounded-card p-8 text-center border border-surface-border text-sm text-stone-500">
+            Loading assigned lots…
+          </div>
+        ) : filteredLots.length === 0 && !loadError ? (
           <div className="bg-surface-card rounded-card p-8 text-center border border-surface-border space-y-2">
             <Package size={36} className="mx-auto text-stone-300" />
-            <p className="text-sm font-semibold text-stone-600">No lots found matching criteria</p>
+            <p className="text-sm font-semibold text-stone-600">No assigned lots match these filters</p>
           </div>
-        ) : (
+        ) : !loadError ? (
           filteredLots.map(lot => (
             <div
               key={lot.lot_id}
@@ -368,7 +270,7 @@ export const RecyclerDashboardPage: React.FC = () => {
               </div>
             </div>
           ))
-        )}
+        ) : null}
       </div>
 
 

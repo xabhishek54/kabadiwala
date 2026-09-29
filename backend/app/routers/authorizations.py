@@ -13,6 +13,12 @@ router = APIRouter(prefix="/authorizations", tags=["authorizations"])
 
 @router.post("", response_model=CollectionAuthResponse, status_code=status.HTTP_201_CREATED)
 def issue_collection_authorization(payload: CollectionAuthCreate, db: Session = Depends(get_db)):
+    expires_at = payload.expires_at
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at and expires_at <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=422, detail="Authorization expiry must be in the future")
+
     recycler = db.query(Recycler).filter(Recycler.recycler_id == payload.recycler_id).first()
     if not recycler:
         raise HTTPException(status_code=404, detail="Issuing Recycler not found")
@@ -27,7 +33,7 @@ def issue_collection_authorization(payload: CollectionAuthCreate, db: Session = 
     if not collector:
         raise HTTPException(status_code=404, detail="Collector not found")
 
-    auth_data = payload.dict(exclude_unset=True)
+    auth_data = payload.model_dump(exclude_unset=True)
     auth_obj = CollectionAuthorization(**auth_data)
     db.add(auth_obj)
     db.commit()
@@ -50,7 +56,17 @@ def revoke_collection_authorization(authorization_id: str, db: Session = Depends
 
 @router.get("/collector/{collector_id}", response_model=List[CollectionAuthResponse])
 def get_collector_authorizations(collector_id: str, db: Session = Depends(get_db)):
-    return db.query(CollectionAuthorization).filter(
+    now = datetime.now(timezone.utc)
+    authorizations = db.query(CollectionAuthorization).filter(
         CollectionAuthorization.collector_id == collector_id,
         CollectionAuthorization.status == CollectionAuthStatus.active
     ).all()
+    return [
+        authorization for authorization in authorizations
+        if authorization.expires_at is None
+        or (
+            authorization.expires_at.replace(tzinfo=timezone.utc)
+            if authorization.expires_at.tzinfo is None
+            else authorization.expires_at
+        ) > now
+    ]

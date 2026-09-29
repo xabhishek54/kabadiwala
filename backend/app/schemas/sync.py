@@ -1,5 +1,5 @@
 from typing import List, Any, Dict, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 class SyncItem(BaseModel):
     client_uuid: str

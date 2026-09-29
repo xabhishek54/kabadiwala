@@ -1,8 +1,8 @@
-from typing import List, Optional
+from typing import List, Optional, Literal
 from datetime import datetime, timedelta, timezone
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
@@ -15,9 +15,10 @@ router = APIRouter(prefix="/prices", tags=["prices"])
 
 
 class PriceRefineRequest(BaseModel):
-    category: str
-    weight_kg: float
-    condition: str = "intact"
+    category: MaterialCategory
+    sub_category: Optional[str] = None
+    weight_kg: float = Field(gt=0, le=500)
+    condition: Literal["intact", "damaged", "stripped"] = "intact"
     district: str = "Pune"
 
 
@@ -28,7 +29,8 @@ def refine_price_estimate(payload: PriceRefineRequest, db: Session = Depends(get
     Returns detailed explainability breakdown for the transparent price UI.
     """
     result = refine_price(
-        category=payload.category,
+        category=payload.category.value,
+        sub_category=payload.sub_category,
         weight_kg=payload.weight_kg,
         condition=payload.condition,
         district=payload.district,
@@ -38,7 +40,7 @@ def refine_price_estimate(payload: PriceRefineRequest, db: Session = Depends(get
 
 @router.post("/observations", response_model=PriceObservationResponse, status_code=status.HTTP_201_CREATED)
 def record_price_observation(payload: PriceObservationCreate, db: Session = Depends(get_db)):
-    obs_data = payload.dict(exclude_unset=True)
+    obs_data = payload.model_dump(exclude_unset=True)
     obs = PriceObservation(**obs_data)
     db.add(obs)
     db.commit()

@@ -1,6 +1,6 @@
 from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from app.models.enums import MaterialCategory, ObservationUnit, ObservationSource, PriceChannel
 
 class PriceObservationBase(BaseModel):
@@ -23,8 +23,7 @@ class PriceObservationResponse(PriceObservationBase):
     observation_id: str
     observed_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class PriceAggregateResponse(BaseModel):
     material_category: MaterialCategory

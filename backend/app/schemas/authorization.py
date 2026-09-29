@@ -1,6 +1,6 @@
 from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from app.models.enums import CollectionAuthStatus
 
 class CollectionAuthBase(BaseModel):
@@ -18,8 +18,7 @@ class CollectionAuthResponse(CollectionAuthBase):
     issued_at: datetime
     revoked_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class PublicVerifyResponse(BaseModel):
     type: str  # "recycler" or "collection_agent" or "authorization"

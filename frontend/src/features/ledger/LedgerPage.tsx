@@ -13,7 +13,7 @@ export const LedgerPage: React.FC = () => {
 
   // Resolve the logged-in user's ID so ledger is scoped per account
   const collectorId: string = (() => {
-    try { const u = JSON.parse(localStorage.getItem('kabadiwala_user') || '{}'); return u.id || u.phone || ''; } catch { return ''; }
+    try { const u = JSON.parse(window.localStorage?.getItem('kabadiwala_user') || '{}'); return u.id || u.phone || ''; } catch { return ''; }
   })();
 
   const materials = useLiveQuery(

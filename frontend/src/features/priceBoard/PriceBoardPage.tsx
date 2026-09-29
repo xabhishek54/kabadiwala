@@ -5,7 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, seedLocalPriceCache, type LocalPriceCache } from '../../data/local/db';
 import { AudioButton } from '../../components/AudioButton';
 import {
-  TrendingUp, TrendingDown, Minus, ShieldCheck, MapPin, Search,
+  ShieldCheck, MapPin, Search,
   ArrowRight, PlusCircle, Globe, CheckCircle2, X, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { fetchPrices, submitFieldPriceReport, syncCommodityIndex } from '../../data/remote/apiClient';
@@ -22,7 +22,7 @@ export const PriceBoardPage: React.FC = () => {
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportSuccess, setReportSuccess] = useState<string | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(() => {
-    try { return localStorage.getItem('kabadiwala_last_sync'); } catch { return null; }
+    try { return window.localStorage?.getItem('kabadiwala_last_sync'); } catch { return null; }
   });
 
   // Field Report Form State
@@ -33,7 +33,7 @@ export const PriceBoardPage: React.FC = () => {
 
   const [district, setDistrict] = useState<string>(() => {
     try {
-      return (typeof window !== 'undefined' && window.localStorage && localStorage.getItem('kabadiwala_district')) || 'Mumbai';
+      return (typeof window !== 'undefined' && window.localStorage && window.localStorage?.getItem('kabadiwala_district')) || 'Pune';
     } catch {
       return 'Mumbai';
     }
@@ -48,7 +48,6 @@ export const PriceBoardPage: React.FC = () => {
     try {
       const serverPrices = await fetchPrices(targetDistrict);
       if (serverPrices && serverPrices.length > 0) {
-        await db.priceCache.clear();
         const now = new Date().toISOString();
         await db.priceCache.bulkPut(
           serverPrices.map((p: any) => ({
@@ -58,7 +57,7 @@ export const PriceBoardPage: React.FC = () => {
             market_range_low: p.market_range_low || p.current_price * 0.9,
             market_range_high: p.market_range_high || p.current_price * 1.1,
             informal_reference_price: p.informal_reference_price,
-            last_updated: p.updated_at || now,
+            updated_at: p.updated_at || now,
             trend_direction: p.trend_direction as any,
             trend_slope: p.trend_slope || 0.0,
             district: targetDistrict,
@@ -66,7 +65,7 @@ export const PriceBoardPage: React.FC = () => {
         );
         // Record last successful sync time
         const syncTs = new Date().toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-        localStorage.setItem('kabadiwala_last_sync', syncTs);
+        window.localStorage?.setItem('kabadiwala_last_sync', syncTs);
         setLastSyncTime(syncTs);
       }
     } catch {
@@ -79,7 +78,7 @@ export const PriceBoardPage: React.FC = () => {
   const handleDistrictSelect = (d: string) => {
     setDistrict(d);
     try {
-      localStorage.setItem('kabadiwala_district', d);
+      window.localStorage?.setItem('kabadiwala_district', d);
       window.dispatchEvent(new Event('district_changed'));
     } catch {}
     loadBackendPrices(d);
@@ -128,7 +127,10 @@ export const PriceBoardPage: React.FC = () => {
     loadBackendPrices(district);
   }, []);
 
-  const rawPrices = useLiveQuery(() => db.priceCache.toArray(), []) || [];
+  const rawPrices = useLiveQuery(
+    () => db.priceCache.where('district').equals(district).toArray(),
+    [district]
+  ) || [];
 
   // Categorize items into Paper, Plastic, Metal, E-waste, Other
   const getItemTabGroup = (cat: string): string => {

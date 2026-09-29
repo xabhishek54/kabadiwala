@@ -1,43 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Sparkles, Cpu, RefreshCw, BarChart2 } from 'lucide-react';
-
-interface MineralImpactData {
-  unit: string;
-  district: string;
-  mineral_estimates: Record<string, number>;
-  total_e_waste_processed_kg: number;
-}
+import { fetchMineralImpact, type MineralImpactRecord } from '../../data/remote/apiClient';
 
 export const MineralsImpactPage: React.FC = () => {
-  const [data, setData] = useState<MineralImpactData | null>(null);
+  const [data, setData] = useState<MineralImpactRecord | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState('');
 
   const fetchImpact = async () => {
     setLoading(true);
+    setError('');
     try {
-      const res = await fetch('http://localhost:8000/admin/minerals/impact');
-      if (res.ok) {
-        const json = await res.json();
-        setData(json);
-      } else {
-        throw new Error('API failed');
-      }
-    } catch {
-      // Offline / fallback mock dataset for JNARDDC demonstration
-      setData({
-        unit: 'grams',
-        district: 'Pune District & Maharashtra Hub',
-        total_e_waste_processed_kg: 1250.0,
-        mineral_estimates: {
-          copper: 250000.0, // 250 kg
-          lithium: 18750.0,  // 18.75 kg
-          cobalt: 56250.0,   // 56.25 kg
-          neodymium: 37500.0,// 37.5 kg
-          tantalum: 187.5,
-          gallium: 62.5,
-          indium: 25.0,
-        },
-      });
+      setData(await fetchMineralImpact());
+    } catch (fetchError) {
+      setData(null);
+      setError(fetchError instanceof Error ? fetchError.message : 'Could not load mineral estimates.');
     } finally {
       setLoading(false);
     }
@@ -71,7 +48,7 @@ export const MineralsImpactPage: React.FC = () => {
                 <span>Critical Minerals Dashboard</span>
                 <Sparkles size={14} className="text-amber-400" />
               </h2>
-              <p className="text-[11px] text-stone-400">JNARDDC & Ministry of Mines Strategic Mandate</p>
+              <p className="text-[11px] text-stone-400">Estimated material composition from completed transactions</p>
             </div>
           </div>
 
@@ -85,7 +62,7 @@ export const MineralsImpactPage: React.FC = () => {
 
         <div className="bg-stone-800/80 rounded-xl p-3 border border-stone-700 flex items-center justify-between text-xs">
           <div>
-            <span className="text-stone-400 block text-[10px]">Total E-Waste Processed</span>
+            <span className="text-stone-400 block text-[10px]">Material from Paid Transactions</span>
             <span className="text-base font-black text-amber-400">
               {data ? `${data.total_e_waste_processed_kg.toLocaleString('en-IN')} kg` : '0 kg'}
             </span>
@@ -102,12 +79,18 @@ export const MineralsImpactPage: React.FC = () => {
         <h3 className="font-bold text-stone-900 text-sm flex items-center justify-between">
           <span className="flex items-center space-x-1.5">
             <BarChart2 size={16} className="text-brand-600" />
-            <span>Recoverable Mineral Potential</span>
+            <span>Theoretical Mineral Content Estimate</span>
           </span>
           <span className="text-[11px] font-normal text-stone-500">Estimates in Grams (g)</span>
         </h3>
 
-        {data && data.mineral_estimates ? (
+        {error ? (
+          <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+            {error}
+          </div>
+        ) : loading ? (
+          <div className="p-6 text-center text-xs text-stone-500">Loading mineral estimates…</div>
+        ) : data && data.total_e_waste_processed_kg > 0 ? (
           Object.entries(data.mineral_estimates).map(([key, val]) => {
             const info = mineralInfo[key] || {
               label: key.toUpperCase(),
@@ -136,13 +119,15 @@ export const MineralsImpactPage: React.FC = () => {
 
                 <div className="text-right">
                   <div className="text-base font-black text-stone-900">{kgVal}</div>
-                  <span className="text-[10px] text-emerald-600 font-bold">Traceable ✓</span>
+                  <span className="text-[10px] text-stone-500 font-medium">Estimated</span>
                 </div>
               </div>
             );
           })
         ) : (
-          <div className="p-6 text-center text-xs text-stone-500">Loading mineral estimates...</div>
+          <div className="p-6 text-center text-xs text-stone-500">
+            No paid or completed transactions are recorded for {data?.district || 'this district'} yet.
+          </div>
         )}
       </div>
 
@@ -150,11 +135,12 @@ export const MineralsImpactPage: React.FC = () => {
       <div className="bg-amber-50 rounded-card p-3.5 border border-amber-200 text-xs text-amber-900 space-y-1">
         <div className="flex items-center space-x-1.5 font-bold">
           <Shield size={16} className="text-amber-700" />
-          <span>National Critical Minerals Alignment</span>
+          <span>About these estimates</span>
         </div>
         <p className="text-[11px] leading-relaxed text-amber-800">
-          This dashboard translates informal e-waste collections into strategic raw mineral recoveries, directly supporting JNARDDC's domestic resource circularity goals.
+          Estimates use theoretical material-composition factors applied to recorded paid transactions. They do not represent measured or laboratory-verified mineral recovery.
         </p>
+        {data && <p className="text-[11px] leading-relaxed text-amber-800">{data.estimate_basis}</p>}
       </div>
     </div>
   );

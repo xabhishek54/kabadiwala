@@ -127,7 +127,7 @@
     "action": "सुचवलेली कारवाई",
     "reviewRequired": "तपासणी आवश्यक",
     "resolution": "प्रकरण सोडवा",
-    "markClean": "सुरक्षित घोषित करा",
+    "markClean": "तपासणी पूर्ण करा",
     "flagFraud": "फसवणूक नोंदवा"
   },
   "auth": {

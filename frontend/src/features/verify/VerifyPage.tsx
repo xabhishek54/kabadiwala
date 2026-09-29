@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { ShieldCheck, ShieldAlert, Search, Package, Award, UserCheck, Factory, QrCode, X } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
+import { verifyPublicRecord } from '../../data/remote/apiClient';
 
 interface VerifyDetails {
   type: string;
@@ -29,29 +30,14 @@ export const VerifyPage: React.FC = () => {
     setSearched(true);
 
     try {
-      const res = await fetch(`http://localhost:8000/verify/${encodeURIComponent(idToSearch.trim())}`);
-      if (res.ok) {
-        const json = await res.json();
-        setResult(json);
-      } else {
-        setResult(null);
-        setError('No matching verified record or authorization badge found.');
-      }
-    } catch {
-      // Offline fallback mock lookup for demo
-      setResult({
-        type: 'collection_agent',
-        id: idToSearch,
-        name_or_title: 'Authorized Collection Agent — EcoRecycle India',
-        verification_status: 'active',
-        is_valid: true,
-        details: {
-          issuing_recycler_name: 'EcoRecycle India (MPCB Authorized)',
-          scope_note: 'PCB, Batteries & Cables Collection',
-          issued_at: new Date().toISOString(),
-          operating_locality: 'Pune District',
-        },
-      });
+      setResult(await verifyPublicRecord(idToSearch));
+    } catch (lookupError) {
+      setResult(null);
+      setError(
+        lookupError instanceof Error && /not found|404/i.test(lookupError.message)
+          ? 'No matching recycler, lot, or authorization record was found.'
+          : 'Verification is unavailable right now. Check your connection and try again.'
+      );
     } finally {
       setLoading(false);
     }
@@ -81,6 +67,9 @@ export const VerifyPage: React.FC = () => {
         );
       } catch (err) {
         console.warn('QR camera start error:', err);
+        setError('Camera access is unavailable. Enter the badge or reference number instead.');
+        setSearched(true);
+        setShowScanner(false);
       }
     }, 200);
   };
@@ -219,7 +208,7 @@ export const VerifyPage: React.FC = () => {
               </div>
 
               <p className="text-[10px] text-stone-500 font-medium text-center">
-                Verified on-chain tamper-proof traceability index — Kabadiwala Connect
+                Status checked against current Kabadiwala Connect records.
               </p>
             </div>
           ) : null}

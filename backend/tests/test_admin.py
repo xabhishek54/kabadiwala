@@ -15,6 +15,7 @@ from app.models.material import Material
 from app.models.transaction import Transaction
 from app.models.recycler import Recycler
 from app.models.enums import MaterialCategory, MaterialCondition, TransactionStatus, AuthorizationStatus
+from app.models.traceability import TraceabilityEvent
 
 TEST_DATABASE_URL = "sqlite:///./test.db"
 test_engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
@@ -75,6 +76,9 @@ def setup_db():
     yield
     # Clean up created rows without dropping tables
     db_cleanup = TestingSessionLocal()
+    db_cleanup.query(TraceabilityEvent).filter(
+        TraceabilityEvent.lot_id == "lot-admin-101"
+    ).delete(synchronize_session=False)
     db_cleanup.query(Transaction).filter(Transaction.lot_id == "lot-admin-101").delete()
     db_cleanup.query(Material).filter(Material.lot_id == "lot-admin-101").delete()
     db_cleanup.query(Collector).filter(Collector.collector_id == "admin-c1").delete()
@@ -93,6 +97,9 @@ def test_list_admin_lots():
 
 
 def test_update_lot_status():
+    handed_over = client.patch("/admin/lots/lot-admin-101/status?status=handed_over")
+    assert handed_over.status_code == 200
+
     resp = client.patch("/admin/lots/lot-admin-101/status?status=confirmed&final_sale_value=3600.0")
     assert resp.status_code == 200
     data = resp.json()
@@ -104,6 +111,14 @@ def test_update_lot_status():
     assert len(matching) == 1
     assert matching[0]["status"] == "confirmed"
     assert matching[0]["final_sale_value"] == 3600.0
+
+
+def test_update_lot_status_requires_existing_lot_and_valid_transition():
+    missing = client.patch("/admin/lots/not-a-real-lot/status?status=confirmed")
+    assert missing.status_code == 404
+
+    invalid = client.patch("/admin/lots/lot-admin-101/status?status=paid")
+    assert invalid.status_code == 409
 
 
 def test_dashboard_stats():
@@ -123,12 +138,21 @@ def test_resolve_anomaly():
 
 
 def test_minerals_impact():
+    assert client.patch("/admin/lots/lot-admin-101/status?status=handed_over").status_code == 200
+    assert client.patch(
+        "/admin/lots/lot-admin-101/status?status=confirmed&final_sale_value=3500"
+    ).status_code == 200
+    assert client.patch(
+        "/admin/lots/lot-admin-101/status?status=paid"
+    ).status_code == 200
+
     resp = client.get("/admin/minerals/impact")
     assert resp.status_code == 200
     data = resp.json()
     assert "mineral_estimates" in data
     assert "copper" in data["mineral_estimates"]
     assert data["total_e_waste_processed_kg"] >= 12.5
+    assert "not measured" in data["estimate_basis"].lower()
 
 
 def test_update_recycler_config():
@@ -141,4 +165,3 @@ def test_update_recycler_config():
     data = resp.json()
     assert data["service_radius_km"] == 25.0
     assert "CABLE" in data["materials_accepted"]
-

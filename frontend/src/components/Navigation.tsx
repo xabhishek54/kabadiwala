@@ -8,7 +8,7 @@ export const Navigation: React.FC = () => {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [user, setUser] = useState<{ name: string; role: string } | null>(null);
   const [district, setDistrict] = useState<string>(
-    localStorage.getItem('kabadiwala_district') || 'Pune'
+    window.localStorage?.getItem('kabadiwala_district') || 'Pune'
   );
 
   const districts = ['Pune', 'Pimpri-Chinchwad', 'Mumbai', 'Thane', 'Nagpur', 'Nashik'];
@@ -20,13 +20,13 @@ export const Navigation: React.FC = () => {
     window.addEventListener('offline', handleOffline);
 
     const checkUser = () => {
-      const raw = localStorage.getItem('kabadiwala_user');
+      const raw = window.localStorage?.getItem('kabadiwala_user');
       if (raw) {
         try { setUser(JSON.parse(raw)); } catch { setUser(null); }
       } else {
         setUser(null);
       }
-      const savedDist = localStorage.getItem('kabadiwala_district');
+      const savedDist = window.localStorage?.getItem('kabadiwala_district');
       if (savedDist) setDistrict(savedDist);
     };
     checkUser();
@@ -41,17 +41,17 @@ export const Navigation: React.FC = () => {
 
   const changeLanguage = (lang: string) => {
     i18n.changeLanguage(lang);
-    localStorage.setItem('kabadiwala_lang', lang);
+    window.localStorage?.setItem('kabadiwala_lang', lang);
   };
 
   const handleDistrictChange = (d: string) => {
     setDistrict(d);
-    localStorage.setItem('kabadiwala_district', d);
+    window.localStorage?.setItem('kabadiwala_district', d);
     window.dispatchEvent(new Event('district_changed'));
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('kabadiwala_user');
+    window.localStorage?.removeItem('kabadiwala_user');
     window.location.href = '/login';
   };
 

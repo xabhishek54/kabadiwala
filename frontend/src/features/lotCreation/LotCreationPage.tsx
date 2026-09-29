@@ -1,11 +1,30 @@
 import React, { useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import imageCompression from 'browser-image-compression';
 import { db } from '../../data/local/db';
 import { classifyImageClient, type ImageClassificationResult } from '../../utils/mlClassifier';
 import { refinePriceEstimate, type PriceRefineResult } from '../../data/remote/apiClient';
 import { AudioButton } from '../../components/AudioButton';
 import { Camera, CheckCircle2, ArrowRight, ArrowLeft, Sparkles, AlertTriangle, Info, Cpu } from 'lucide-react';
+
+function createLotId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    crypto.getRandomValues(bytes);
+  } else {
+    bytes.forEach((_, index) => { bytes[index] = Math.floor(Math.random() * 256); });
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 export const LotCreationPage: React.FC = () => {
   const { t, i18n } = useTranslation();
@@ -15,16 +34,18 @@ export const LotCreationPage: React.FC = () => {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
   // Resolve the logged-in user's collector ID from localStorage (fallback to phone)
-  const currentUser = (() => { try { return JSON.parse(localStorage.getItem('kabadiwala_user') || '{}'); } catch { return {}; } })();
-  const collectorId: string = currentUser.id || currentUser.phone || 'unknown';
+  const currentUser = (() => { try { return JSON.parse(window.localStorage?.getItem('kabadiwala_user') || '{}'); } catch { return {}; } })();
+  const collectorId: string = currentUser.id || '';
 
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
-  const [sourceType, setSourceType] = useState<string>('household');
+  const [sourceType, setSourceType] = useState<'household' | 'commercial' | 'mixed_scrap'>('household');
   const [category, setCategory] = useState<string>('PCB');
   const [subCategory, setSubCategory] = useState<string>('Motherboard');
   const [weightKg, setWeightKg] = useState<number>(1.0);
   const [condition, setCondition] = useState<'intact' | 'damaged' | 'stripped'>('intact');
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [weightError, setWeightError] = useState<string | null>(null);
   const [showSafetyModal, setShowSafetyModal] = useState<boolean>(false);
 
   // Client ML state
@@ -38,10 +59,8 @@ export const LotCreationPage: React.FC = () => {
 
   const sourceTypes = [
     { id: 'household', label: isEn ? 'Household' : 'घरेलू (Household)', icon: '🏠' },
-    { id: 'office', label: isEn ? 'Office / IT' : 'कार्यालय (Office)', icon: '🏢' },
-    { id: 'business', label: isEn ? 'Shop / Business' : 'व्यापार (Business)', icon: '🏬' },
-    { id: 'waste_collection', label: isEn ? 'Door Collection' : 'फेरी संग्रहण (Collection)', icon: '🚚' },
-    { id: 'other', label: isEn ? 'Other' : 'अन्य (Other)', icon: '📦' },
+    { id: 'commercial', label: isEn ? 'Commercial' : 'व्यावसायिक (Commercial)', icon: '🏢' },
+    { id: 'mixed_scrap', label: isEn ? 'Mixed Scrap' : 'मिश्रित स्क्रैप (Mixed Scrap)', icon: '📦' },
   ];
 
   const subCategoryOptions: Record<string, { id: string; label: string }[]> = {
@@ -89,60 +108,101 @@ export const LotCreationPage: React.FC = () => {
     { id: 'MIXED_PLASTIC', label: t('categories.MIXED_PLASTIC'), icon: '♻️' },
   ];
 
-  const BASE_PRICES: Record<string, number> = {
-    PCB: 260, BATTERY: 90, CABLE: 150, LCD_PANEL: 110, CRT: 40, MOTOR_MAGNET: 70, MIXED_PLASTIC: 25,
-  };
+
+  const district = (typeof window !== 'undefined' && window.localStorage?.getItem('kabadiwala_district')) || 'Pune';
+  const cachedPrices = useLiveQuery(() => db.priceCache.where('district').equals(district).toArray()) || [];
+
+  const BASE_PRICES: Record<string, number> = cachedPrices.reduce((acc, p) => {
+    if (!acc[p.category]) acc[p.category] = p.current_price;
+    return acc;
+  }, {} as Record<string, number>);
+
+  // Default fallback if db is empty
+  if (Object.keys(BASE_PRICES).length === 0) {
+    BASE_PRICES['PCB'] = 260; BASE_PRICES['BATTERY'] = 90; BASE_PRICES['CABLE'] = 150;
+    BASE_PRICES['LCD_PANEL'] = 110; BASE_PRICES['CRT'] = 40; BASE_PRICES['MOTOR_MAGNET'] = 70; BASE_PRICES['MIXED_PLASTIC'] = 25;
+  }
   const CONDITION_MULT: Record<string, number> = { intact: 1.0, damaged: 0.7, stripped: 0.4 };
 
-  const basePricePerKg = BASE_PRICES[category] ?? 100;
+  const normalizedSubCategory = subCategory.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const categoryPrices = cachedPrices.filter((price) => price.category === category);
+  const selectedPrice = categoryPrices.find((price) => {
+    const normalizedName = price.sub_category.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return normalizedName.includes(normalizedSubCategory) || normalizedSubCategory.includes(normalizedName);
+  }) ?? categoryPrices[0];
+  const basePricePerKg = selectedPrice?.current_price ?? BASE_PRICES[category] ?? 100;
   const conditionMult = CONDITION_MULT[condition] ?? 1.0;
 
   const estimatedTotal = serverRefine
     ? serverRefine.refined_total
     : Math.round(basePricePerKg * weightKg * conditionMult);
 
-  const district = (typeof window !== 'undefined' && localStorage.getItem('kabadiwala_district')) || 'Pune';
+
 
   const handlePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const dataUrl = event.target?.result as string;
-      setPhotoDataUrl(dataUrl);
-
-      // Run client-side TensorFlow.js heuristic image classification
-      setIsClassifying(true);
-      setAiSuggestionApplied(false);
-      try {
-        const result = await classifyImageClient(dataUrl);
-        setAiResult(result);
-      } catch (err) {
-        console.warn('Image classification failed:', err);
-      } finally {
-        setIsClassifying(false);
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressedPhoto = await imageCompression(file, {
+        maxSizeMB: 0.1,
+        maxWidthOrHeight: 800,
+        useWebWorker: true,
+        fileType: 'image/jpeg',
+      });
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const dataUrl = event.target?.result;
+        if (typeof dataUrl !== 'string') {
+          setSaveError(isEn ? 'The photo could not be read. Please try again.' : 'फोटो नहीं पढ़ा जा सका। कृपया फिर कोशिश करें।');
+          return;
+        }
+        setPhotoDataUrl(dataUrl);
+        setSaveError(null);
+        setIsClassifying(true);
+        setAiSuggestionApplied(false);
+        try {
+          const result = await classifyImageClient(dataUrl);
+          setAiResult(result);
+        } catch (err) {
+          console.warn('Image classification failed:', err);
+        } finally {
+          setIsClassifying(false);
+        }
+      };
+      reader.onerror = () => {
+        setSaveError(isEn ? 'The photo could not be read. Please try again.' : 'फोटो नहीं पढ़ा जा सका। कृपया फिर कोशिश करें।');
+      };
+      reader.readAsDataURL(compressedPhoto);
+    } catch (err) {
+      console.error('Photo compression failed:', err);
+      setSaveError(isEn ? 'The photo could not be prepared. Please choose another photo.' : 'फोटो तैयार नहीं हो सका। कृपया दूसरा फोटो चुनें।');
+    }
   };
 
   const applyAiSuggestion = () => {
     if (!aiResult) return;
     if (aiResult.category && BASE_PRICES[aiResult.category] !== undefined) {
       setCategory(aiResult.category);
+      setSubCategory(subCategoryOptions[aiResult.category]?.[0]?.id ?? aiResult.category);
     }
     if (aiResult.condition) {
-      setCondition(aiResult.condition as any);
+      setCondition(aiResult.condition);
     }
     setAiSuggestionApplied(true);
   };
 
   const handleEnterPriceStep = async () => {
+    if (!Number.isFinite(weightKg) || weightKg <= 0 || weightKg > 500) {
+      setWeightError(isEn ? 'Enter a weight between 0.1 and 500 kg.' : '0.1 से 500 किग्रा के बीच वजन दर्ज करें।');
+      return;
+    }
+    setWeightError(null);
+    setServerRefine(null);
     setStep(4);
     setIsRefining(true);
     try {
-      const refined = await refinePriceEstimate(category, weightKg, condition, district);
+      const refined = await refinePriceEstimate(category, subCategory, weightKg, condition, district);
       setServerRefine(refined);
     } catch (err) {
       console.warn('Refine failed:', err);
@@ -152,55 +212,77 @@ export const LotCreationPage: React.FC = () => {
   };
 
   const handleSaveLot = async (shouldMatchImmediately: boolean = true) => {
+    if (!Number.isFinite(weightKg) || weightKg <= 0 || weightKg > 500) {
+      setWeightError(isEn ? 'Enter a weight between 0.1 and 500 kg.' : '0.1 से 500 किग्रा के बीच वजन दर्ज करें।');
+      setStep(3);
+      return;
+    }
+    if (!collectorId) {
+      setSaveError(isEn ? 'Your account is not ready yet. Please sign in again.' : 'आपका खाता तैयार नहीं है। कृपया फिर से लॉग इन करें।');
+      return;
+    }
+
     setIsSaving(true);
-    const clientUuid = `lot-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+    setSaveError(null);
+    const clientUuid = createLotId();
     const nowIso = new Date().toISOString();
 
     try {
-      await db.materials.add({
-        lot_id: clientUuid,
-        material_category: category as any,
-        sub_category: subCategory || category,
-        approx_weight_kg: weightKg,
-        condition: condition,
-        source_type: sourceType as any,
-        estimated_value: estimatedTotal,
-        collector_id: collectorId,
-        photo_local_uri: photoDataUrl || undefined,
-        created_at: nowIso,
-        synced: false,
-      } as any);
+      await db.transaction('rw', db.materials, db.transactions, db.syncOutbox, async () => {
+        await db.materials.add({
+          lot_id: clientUuid,
+          material_category: category,
+          sub_category: subCategory || category,
+          approx_weight_kg: weightKg,
+          condition,
+          condition_confidence: aiSuggestionApplied ? aiResult?.confidence : undefined,
+          condition_ml_used: aiSuggestionApplied,
+          source_type: sourceType,
+          estimated_value: estimatedTotal,
+          collector_id: collectorId,
+          photo_local_uri: photoDataUrl || undefined,
+          created_at: nowIso,
+        });
 
-      await db.transactions.add({
-        lot_id: clientUuid,
-        collector_id: collectorId,
-        material_category: category as any,
-        quoted_price: estimatedTotal,
-        status: 'created',
-        payment_method: 'pending',
-        payment_status: 'unpaid',
-        created_at: nowIso,
-        updated_at: nowIso,
-        synced: false,
-      } as any);
+        await db.transactions.add({
+          lot_id: clientUuid,
+          collector_id: collectorId,
+          status: 'quoted',
+          quoted_price: estimatedTotal,
+          payment_method: 'pending',
+          payment_status: 'unpaid',
+          created_at: nowIso,
+          updated_at: nowIso,
+        });
 
-      await db.syncOutbox.add({
-        client_uuid: clientUuid,
-        entity_type: 'material',
-        action: 'create',
-        payload: { lot_id: clientUuid, material_category: category, weight_kg: weightKg, estimated_value: estimatedTotal },
-        created_at: nowIso,
-        synced: false,
+        await db.syncOutbox.add({
+          client_uuid: clientUuid,
+          entity_type: 'material',
+          action: 'create',
+          payload: {
+            lot_id: clientUuid,
+            material_category: category,
+            sub_category: subCategory || category,
+            approx_weight_kg: weightKg,
+            condition,
+            condition_confidence: aiSuggestionApplied ? aiResult?.confidence : undefined,
+            condition_ml_used: aiSuggestionApplied,
+            source_type: sourceType,
+            estimated_value: estimatedTotal,
+            classifier_confidence: aiSuggestionApplied ? aiResult?.confidence : undefined,
+            classifier_used: aiSuggestionApplied,
+            created_at: nowIso,
+          },
+          created_at: nowIso,
+          synced: false,
+        });
       });
+      navigate(shouldMatchImmediately ? `/match/${clientUuid}` : '/ledger');
     } catch (err) {
-      console.warn('Local Dexie save error:', err);
+      console.error('Local lot save failed:', err);
+      setSaveError(isEn ? 'We could not save this lot. Your data has not been submitted; please try again.' : 'लॉट सेव नहीं हुआ। डेटा नहीं भेजा गया है; कृपया फिर कोशिश करें।');
     } finally {
       setIsSaving(false);
-      if (shouldMatchImmediately) {
-        navigate(`/match/${clientUuid}`);
-      } else {
-        navigate('/ledger');
-      }
     }
   };
 
@@ -338,7 +420,7 @@ export const LotCreationPage: React.FC = () => {
             </label>
             <select
               value={sourceType}
-              onChange={(e) => setSourceType(e.target.value)}
+              onChange={(e) => setSourceType(e.target.value as 'household' | 'commercial' | 'mixed_scrap')}
               className="w-full p-3 rounded-xl border border-stone-300 bg-stone-50 font-bold text-xs text-stone-900 focus:ring-2 focus:ring-brand-500 focus:outline-none cursor-pointer"
             >
               {sourceTypes.map((st) => (
@@ -359,6 +441,7 @@ export const LotCreationPage: React.FC = () => {
               onChange={(e) => {
                 const cId = e.target.value;
                 setCategory(cId);
+                setAiSuggestionApplied(false);
                 setServerRefine(null);
                 if (subCategoryOptions[cId]?.[0]) {
                   setSubCategory(subCategoryOptions[cId][0].id);
@@ -385,7 +468,10 @@ export const LotCreationPage: React.FC = () => {
               </label>
               <select
                 value={subCategory}
-                onChange={(e) => setSubCategory(e.target.value)}
+                onChange={(e) => {
+                  setSubCategory(e.target.value);
+                  setServerRefine(null);
+                }}
                 className="w-full p-3 rounded-xl border border-stone-300 bg-stone-50 font-bold text-xs text-stone-900 focus:ring-2 focus:ring-brand-500 focus:outline-none cursor-pointer"
               >
                 {subCategoryOptions[category].map((sc) => (
@@ -476,15 +562,20 @@ export const LotCreationPage: React.FC = () => {
             <div className="flex items-center space-x-2">
               <input
                 type="number"
-                step="0.5"
-                min="0.5"
+                step="0.1"
+                min="0.1"
                 max="500"
                 value={weightKg}
-                onChange={(e) => { setWeightKg(parseFloat(e.target.value) || 1.0); setServerRefine(null); }}
+                onChange={(e) => {
+                  setWeightKg(e.target.value === '' ? Number.NaN : parseFloat(e.target.value));
+                  setWeightError(null);
+                  setServerRefine(null);
+                }}
                 className="w-full text-2xl font-black p-3 rounded-xl border border-stone-300 text-stone-900 bg-stone-50 focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
               <span className="text-lg font-bold text-stone-600">{isEn ? 'kg' : 'किग्रा (kg)'}</span>
             </div>
+            {weightError && <p className="mt-2 text-xs font-semibold text-rose-700" role="alert">{weightError}</p>}
 
             {/* Quick Weight Selectors */}
             <div className="flex space-x-2 mt-2.5">
@@ -515,7 +606,11 @@ export const LotCreationPage: React.FC = () => {
                 <button
                   key={cond.key}
                   type="button"
-                  onClick={() => { setCondition(cond.key as any); setServerRefine(null); }}
+                  onClick={() => {
+                    setCondition(cond.key as 'intact' | 'damaged' | 'stripped');
+                    setAiSuggestionApplied(false);
+                    setServerRefine(null);
+                  }}
                   className={`p-2.5 rounded-xl border text-center transition-all ${
                     condition === cond.key
                       ? 'bg-amber-50 border-amber-500 text-amber-900 font-bold ring-2 ring-amber-500/20'
@@ -573,7 +668,11 @@ export const LotCreationPage: React.FC = () => {
                   </span>
                 )}
                 <span className="text-xs text-brand-600 block mt-0.5">
-                  (₹{serverRefine ? Math.round(serverRefine.market_low) : Math.round(estimatedTotal * 0.95)} — ₹{serverRefine ? Math.round(serverRefine.market_high) : Math.round(estimatedTotal * 1.05)})
+                  (₹{serverRefine
+                    ? Math.round(serverRefine.market_low)
+                    : Math.round((selectedPrice?.market_range_low ?? basePricePerKg * 0.95) * weightKg * conditionMult)} — ₹{serverRefine
+                    ? Math.round(serverRefine.market_high)
+                    : Math.round((selectedPrice?.market_range_high ?? basePricePerKg * 1.05) * weightKg * conditionMult)})
                 </span>
               </>
             )}
@@ -626,6 +725,11 @@ export const LotCreationPage: React.FC = () => {
 
           {/* Submit Options */}
           <div className="space-y-2 pt-2">
+            {saveError && (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-800" role="alert">
+                {saveError}
+              </div>
+            )}
             <button
               type="button"
               onClick={() => handleSaveLot(true)}

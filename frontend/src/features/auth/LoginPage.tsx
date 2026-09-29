@@ -37,10 +37,10 @@ export const LoginPage: React.FC = () => {
           district: user.district || 'Pune',
           isNew: false,
         };
-        localStorage.setItem('kabadiwala_user', JSON.stringify(userObj));
-        if (user.shop_code) localStorage.setItem('kabadiwala_shop_code', user.shop_code);
-        localStorage.setItem('kabadiwala_district', user.district || 'Pune');
-        localStorage.setItem('kabadiwala_account_type', user.account_type || 'independent');
+        window.localStorage?.setItem('kabadiwala_user', JSON.stringify(userObj));
+        if (user.shop_code) window.localStorage?.setItem('kabadiwala_shop_code', user.shop_code);
+        window.localStorage?.setItem('kabadiwala_district', user.district || 'Pune');
+        window.localStorage?.setItem('kabadiwala_account_type', user.account_type || 'independent');
 
         navigate(role === 'recycler' ? '/recycler' : '/');
       } catch (err: any) {
@@ -68,7 +68,7 @@ export const LoginPage: React.FC = () => {
         role,
         isNew: true,
       };
-      localStorage.setItem('kabadiwala_user', JSON.stringify(userObj));
+      window.localStorage?.setItem('kabadiwala_user', JSON.stringify(userObj));
       navigate(role === 'recycler' ? '/onboarding/recycler' : '/onboarding/collector');
     }
   };

@@ -127,7 +127,7 @@
     "action": "Recommended Action",
     "reviewRequired": "Review Required",
     "resolution": "Resolve Anomaly",
-    "markClean": "Mark Safe",
+    "markClean": "Mark Reviewed",
     "flagFraud": "Flag Fraud"
   },
   "auth": {

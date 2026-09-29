@@ -12,6 +12,6 @@ describe('PriceBoardPage Component', () => {
       </BrowserRouter>
     );
 
-    expect(screen.getByText(/पुणे/i)).toBeInTheDocument();
+    expect(screen.getByText(/Pune/i)).toBeInTheDocument();
   });
 });

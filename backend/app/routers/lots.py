@@ -6,21 +6,11 @@ from app.models.material import Material
 from app.models.transaction import Transaction
 from app.models.traceability import TraceabilityEvent
 from app.models.enums import TransactionStatus, EventActor
+from app.services.lot_lifecycle import VALID_TRANSITIONS
 from app.schemas.material import MaterialCreate, MaterialResponse
 from app.schemas.transaction import TransactionResponse
 
 router = APIRouter(prefix="/lots", tags=["lots"])
-
-# Valid state machine transitions per 03-technical-architecture.md §4
-VALID_TRANSITIONS = {
-    TransactionStatus.draft: [TransactionStatus.quoted, TransactionStatus.draft],
-    TransactionStatus.quoted: [TransactionStatus.matched, TransactionStatus.draft],
-    TransactionStatus.matched: [TransactionStatus.handed_over, TransactionStatus.draft],
-    TransactionStatus.handed_over: [TransactionStatus.confirmed],
-    TransactionStatus.confirmed: [TransactionStatus.paid],
-    TransactionStatus.paid: [TransactionStatus.closed],
-    TransactionStatus.closed: [],
-}
 
 @router.post("", response_model=MaterialResponse, status_code=status.HTTP_201_CREATED)
 def create_lot(payload: MaterialCreate, db: Session = Depends(get_db)):
@@ -29,7 +19,7 @@ def create_lot(payload: MaterialCreate, db: Session = Depends(get_db)):
     if existing:
         return existing
 
-    material_data = payload.dict(exclude_unset=True)
+    material_data = payload.model_dump(exclude_unset=True)
     material = Material(**material_data)
     db.add(material)
 

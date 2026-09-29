@@ -7,12 +7,12 @@ Spec ref: 05-ml-ai-guide.md §5, 02-features-implementation.md §8
 from typing import List, Dict, Any, Optional
 import numpy as np
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 
-from app.models.price import PriceObservation
+from app.models.collector import Collector
 from app.models.material import Material
 from app.models.transaction import Transaction
-from app.models.enums import MaterialCategory, MaterialCondition, TransactionStatus
+from app.models.traceability import TraceabilityEvent
+from app.models.enums import EventActor, MaterialCategory, MaterialCondition, TransactionStatus
 
 def compute_mad(values: List[float]) -> tuple[float, float]:
     """
@@ -39,7 +39,27 @@ def detect_transaction_anomalies(
     2. Condition Mismatch Anomaly: Material is 'stripped'/'damaged' but priced at 'intact' levels
     3. Severe Underpricing / Overpricing ratios (>2.5x or <0.35x of median)
     """
-    query = db.query(Transaction).join(Material, Transaction.lot_id == Material.lot_id)
+    resolved_lot_ids = {
+        lot_id
+        for (lot_id,) in db.query(TraceabilityEvent.lot_id).filter(
+            TraceabilityEvent.actor == EventActor.admin,
+            TraceabilityEvent.notes == "Anomaly review resolved",
+        ).distinct().all()
+    }
+    query = db.query(Transaction).join(
+        Material, Transaction.lot_id == Material.lot_id
+    ).join(
+        Collector, Collector.collector_id == Transaction.collector_id
+    ).filter(
+        Transaction.status.in_([
+            TransactionStatus.confirmed,
+            TransactionStatus.paid,
+            TransactionStatus.closed,
+        ]),
+        Transaction.final_sale_value.isnot(None),
+    )
+    if district.strip():
+        query = query.filter(Collector.operating_locality.ilike(f"%{district.strip()}%"))
 
     if category:
         try:
@@ -54,10 +74,10 @@ def detect_transaction_anomalies(
     # Group prices by category to calculate category medians & MADs
     cat_prices: Dict[str, List[float]] = {}
     for tx in transactions:
-        if not tx.final_sale_value and not tx.quoted_price:
+        if tx.lot_id in resolved_lot_ids or tx.final_sale_value is None:
             continue
         m = tx.material
-        price = tx.final_sale_value or tx.quoted_price or 0.0
+        price = tx.final_sale_value
         unit_price = price / max(m.approx_weight_kg, 0.1)
         cat_key = m.material_category.value
         if cat_key not in cat_prices:
@@ -71,8 +91,10 @@ def detect_transaction_anomalies(
 
     # Evaluate each transaction against statistical thresholds
     for tx in transactions:
+        if tx.lot_id in resolved_lot_ids or tx.final_sale_value is None:
+            continue
         m = tx.material
-        price = tx.final_sale_value or tx.quoted_price or 0.0
+        price = tx.final_sale_value
         weight = max(m.approx_weight_kg, 0.1)
         unit_price = price / weight
         cat_key = m.material_category.value
@@ -125,6 +147,8 @@ def detect_transaction_anomalies(
                 "reasons": reasons,
                 "collector_id": m.collector_id,
                 "transaction_status": tx.status.value,
+                "audit_status": "open",
+                "recommended_action": "Review this completed transaction manually; do not auto-block payment.",
             })
 
     return anomalies

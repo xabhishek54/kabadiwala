@@ -13,6 +13,7 @@ from app.database import Base, get_db
 from app.models.collector import Collector
 from app.models.material import Material
 from app.models.transaction import Transaction
+from app.models.traceability import TraceabilityEvent
 from app.models.enums import MaterialCategory, MaterialCondition, TransactionStatus
 from app.services.anomaly_detector import compute_mad, detect_transaction_anomalies
 
@@ -94,6 +95,13 @@ class TestAnomalyDetector:
         yield
 
         db_cleanup = TestingSessionLocal()
+        db_cleanup.query(TraceabilityEvent).filter(
+            TraceabilityEvent.lot_id.in_([
+                *(f"lot-norm-{i}" for i in range(5)),
+                "lot-anom-1",
+                "lot-anom-2",
+            ])
+        ).delete(synchronize_session=False)
         db_cleanup.query(Transaction).filter(Transaction.collector_id == "c_anom").delete()
         db_cleanup.query(Material).filter(Material.collector_id == "c_anom").delete()
         db_cleanup.query(Collector).filter(Collector.collector_id == "c_anom").delete()
@@ -113,3 +121,12 @@ class TestAnomalyDetector:
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
+
+    def test_resolved_anomaly_is_persistently_removed_from_open_queue(self):
+        response = client.patch("/admin/anomalies/lot-anom-1/resolve")
+        assert response.status_code == 200
+
+        db = TestingSessionLocal()
+        anomalies = detect_transaction_anomalies(db=db)
+        db.close()
+        assert "lot-anom-1" not in [item["lot_id"] for item in anomalies]

@@ -12,8 +12,13 @@ export const HandoverPage: React.FC = () => {
   const { t, i18n } = useTranslation();
   const isEn = i18n.language === 'en';
 
-  const userJson = typeof window !== 'undefined' ? localStorage.getItem('kabadiwala_user') : null;
-  const currentUser = userJson ? JSON.parse(userJson) : null;
+  const userJson = typeof window !== 'undefined' ? window.localStorage?.getItem('kabadiwala_user') : null;
+  let currentUser: { role?: string } | null = null;
+  try {
+    currentUser = userJson ? JSON.parse(userJson) : null;
+  } catch {
+    currentUser = null;
+  }
   const [material, setMaterial] = useState<LocalMaterial | null>(null);
   const [transaction, setTransaction] = useState<LocalTransaction | null>(null);
   const [qrToken, setQrToken] = useState<string>('');
@@ -27,6 +32,8 @@ export const HandoverPage: React.FC = () => {
   const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isGettingGps, setIsGettingGps] = useState<boolean>(false);
   const [finalValueInput, setFinalValueInput] = useState<string>('');
+  const [handoverError, setHandoverError] = useState<string | null>(null);
+  const [isConfirming, setIsConfirming] = useState(false);
 
   useEffect(() => {
     // Acquire actual browser GPS location
@@ -38,14 +45,12 @@ export const HandoverPage: React.FC = () => {
           setIsGettingGps(false);
         },
         () => {
-          // Default to Pune hub coordinates if GPS permission prompt declined or unavailable
-          setGpsLocation({ lat: 18.5204, lng: 73.8567 });
           setIsGettingGps(false);
         },
         { enableHighAccuracy: true, timeout: 10000 }
       );
     } else {
-      setGpsLocation({ lat: 18.5204, lng: 73.8567 });
+      setGpsLocation(null);
     }
   }, []);
 
@@ -77,45 +82,44 @@ export const HandoverPage: React.FC = () => {
 
   const handleConfirmHandover = async () => {
     if (!lotId || !codeMatches) return;
+    if (!transaction?.recycler_id) {
+      setHandoverError(isEn ? 'Select a recycler for this lot before confirming handover.' : 'हैंडओवर से पहले इस लॉट के लिए रीसायकलर चुनें।');
+      return;
+    }
     const finalVal = parseFloat(finalValueInput) || transaction?.quoted_price || material?.estimated_value || 0;
+    setIsConfirming(true);
+    setHandoverError(null);
+    try {
+      await confirmHandover(
+        lotId,
+        transaction.recycler_id,
+        inputShortCode.trim(),
+        gpsLocation?.lat,
+        gpsLocation?.lng,
+        finalVal,
+        paymentMethod
+      );
 
-    await confirmHandover(
-      lotId,
-      transaction?.recycler_id || 'rec-001',
-      inputShortCode.trim(),
-      gpsLocation?.lat,
-      gpsLocation?.lng,
-      finalVal
-    );
-
-    // Update local IndexedDB transaction status
-    await db.transactions.update(lotId, {
-      status: 'closed',
-      payment_status: 'paid',
-      final_sale_value: finalVal,
-      handover_lat: gpsLocation?.lat,
-      handover_lng: gpsLocation?.lng,
-      updated_at: new Date().toISOString(),
-    });
-
-    // Queue in sync outbox
-    await db.syncOutbox.add({
-      client_uuid: lotId,
-      entity_type: 'transaction',
-      action: 'upsert',
-      payload: {
+      await db.transactions.update(lotId, {
         status: 'closed',
         payment_status: 'paid',
-        final_sale_value: finalVal,
         payment_method: paymentMethod,
+        final_sale_value: finalVal,
         handover_lat: gpsLocation?.lat,
         handover_lng: gpsLocation?.lng,
-      },
-      created_at: new Date().toISOString(),
-      synced: false,
-    });
-
-    setIsConfirmed(true);
+        updated_at: new Date().toISOString(),
+      });
+      setIsConfirmed(true);
+    } catch (error) {
+      console.error('Handover confirmation failed:', error);
+      setHandoverError(
+        error instanceof Error
+          ? error.message
+          : (isEn ? 'Handover could not be confirmed. Please try again.' : 'हैंडओवर की पुष्टि नहीं हुई। कृपया फिर कोशिश करें।')
+      );
+    } finally {
+      setIsConfirming(false);
+    }
   };
 
   if (!material) {
@@ -193,7 +197,7 @@ export const HandoverPage: React.FC = () => {
 
           <div className="flex items-center justify-center space-x-1.5 text-xs text-emerald-700 font-semibold bg-emerald-50 py-2 rounded-xl">
             <ShieldCheck size={16} />
-            <span>{isEn ? 'Tamper-Proof Blockchain Hash Verified' : 'टैम्पर-प्रूफ डिजिटल रसीद (Verifiable Traceable Event)'}</span>
+            <span>{isEn ? 'Traceable digital handover record' : 'डिजिटल हैंडओवर का पता लगाने योग्य रिकॉर्ड'}</span>
           </div>
         </div>
       ) : (
@@ -295,14 +299,24 @@ export const HandoverPage: React.FC = () => {
           <div className="bg-stone-100 rounded-xl p-2.5 text-xs text-stone-600 flex items-center justify-between">
             <span className="font-semibold">GPS Handover Location:</span>
             <span className="font-mono font-bold text-stone-900">
-              {isGettingGps ? 'Fetching GPS...' : `${gpsLocation?.lat.toFixed(4)}, ${gpsLocation?.lng.toFixed(4)}`}
+              {isGettingGps
+                ? 'Fetching GPS...'
+                : gpsLocation
+                  ? `${gpsLocation.lat.toFixed(4)}, ${gpsLocation.lng.toFixed(4)}`
+                  : (isEn ? 'Location not shared' : 'स्थान साझा नहीं किया गया')}
             </span>
           </div>
+
+          {handoverError && (
+            <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-800" role="alert">
+              {handoverError}
+            </p>
+          )}
 
           <button
             type="button"
             onClick={handleConfirmHandover}
-            disabled={!canConfirm}
+            disabled={!canConfirm || isConfirming}
             className={`w-full font-bold py-3.5 rounded-xl shadow-md transition-all active:scale-[0.98] ${
               canConfirm
                 ? 'bg-brand-600 hover:bg-brand-700 text-white cursor-pointer'
@@ -310,7 +324,9 @@ export const HandoverPage: React.FC = () => {
             }`}
           >
             {canConfirm
-              ? (isEn ? '✅ Confirm Receipt & Complete Sale' : '✅ प्राप्ति की पुष्टि करें और भुगतान रिकॉर्ड करें')
+              ? (isConfirming
+                ? (isEn ? 'Confirming…' : 'पुष्टि हो रही है…')
+                : (isEn ? '✅ Confirm Receipt & Record Payment' : '✅ प्राप्ति की पुष्टि करें और भुगतान दर्ज करें'))
               : (isEn ? '🔒 Enter valid 6-digit code to unlock' : '🔒 6-अंकीय कोड डालें (Locked)')}
           </button>
         </div>

@@ -1,5 +1,23 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
+export interface PublicVerifyRecord {
+  type: string;
+  id: string;
+  name_or_title: string;
+  verification_status: string;
+  is_valid: boolean;
+  details: Record<string, unknown>;
+}
+
+export async function verifyPublicRecord(identifier: string): Promise<PublicVerifyRecord> {
+  const response = await fetch(`${API_BASE_URL}/verify/${encodeURIComponent(identifier.trim())}`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || `Verification lookup failed with status ${response.status}`);
+  }
+  return response.json();
+}
+
 export async function pushSyncOutbox(collectorId: string, items: any[]) {
   const response = await fetch(`${API_BASE_URL}/sync/push`, {
     method: 'POST',
@@ -28,67 +46,18 @@ export async function pullSyncData(district: string = 'Pune') {
   return response.json();
 }
 
-export async function fetchRecyclerMatches(category: string, lat: number = 18.5204, lng: number = 73.8567) {
-  try {
-    const response = await fetch(
-      `${API_BASE_URL}/recyclers/match/rank?category=${encodeURIComponent(category)}&lat=${lat}&lng=${lng}`
-    );
-    const data = await response.json();
-    if (Array.isArray(data) && data.length > 0) {
-      return data;
-    }
-    throw new Error('No backend matches found for category');
-  } catch (error) {
-    console.warn('API recycler match offline fallback, using local mock data:', error);
-    // Offline fallback for demo purposes
-    return [
-      {
-        recycler: {
-          recycler_id: 'rec-001',
-          name: 'GreenTech E-Waste Recyclers',
-          authorization_status: 'verified',
-          authorization_ref_no: 'MPCB/E-WASTE/2024/089',
-          contact_phone: '+919876543210',
-          offered_rates: { PCB: 260.0, BATTERY: 90.0, CABLE: 150.0 },
-          pickup_available: true,
-        },
-        distance_km: 3.2,
-        score: 0.92,
-        rate_for_category: 260.0,
-        pickup_available: true,
-      },
-      {
-        recycler: {
-          recycler_id: 'rec-002',
-          name: 'EcoRecycle Solutions Maharashtra',
-          authorization_status: 'verified',
-          authorization_ref_no: 'MPCB/E-WASTE/2024/112',
-          contact_phone: '+919812345678',
-          offered_rates: { PCB: 250.0, CABLE: 155.0 },
-          pickup_available: true,
-        },
-        distance_km: 5.8,
-        score: 0.84,
-        rate_for_category: 250.0,
-        pickup_available: true,
-      },
-      {
-        recycler: {
-          recycler_id: 'rec-003',
-          name: 'Chinchwad Aggregators & Metal Works',
-          authorization_status: 'verified',
-          authorization_ref_no: 'MPCB/E-WASTE/2024/045',
-          contact_phone: '+919765432109',
-          offered_rates: { BATTERY: 95.0, CABLE: 145.0 },
-          pickup_available: false,
-        },
-        distance_km: 8.1,
-        score: 0.76,
-        rate_for_category: 145.0,
-        pickup_available: false,
-      },
-    ];
+export async function fetchRecyclerMatches(category: string, lat: number, lng: number) {
+  const response = await fetch(
+    `${API_BASE_URL}/recyclers/match/rank?category=${encodeURIComponent(category)}&lat=${lat}&lng=${lng}`
+  );
+  if (!response.ok) {
+    throw new Error(`Recycler matching failed with status ${response.status}`);
   }
+  const data = await response.json();
+  if (!Array.isArray(data)) {
+    throw new Error('Recycler matching returned an invalid response');
+  }
+  return data;
 }
 
 export async function getHandoverToken(lotId: string) {
@@ -115,30 +84,29 @@ export async function confirmHandover(
   shortCode?: string,
   lat?: number,
   lng?: number,
-  finalSaleValue?: number
+  finalSaleValue?: number,
+  paymentMethod: 'cash' | 'upi' = 'cash'
 ) {
-  try {
-    const response = await fetch(`${API_BASE_URL}/handovers/confirm`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        lot_id: lotId,
-        recycler_id: recyclerId,
-        short_code: shortCode,
-        gps_lat: lat,
-        gps_lng: lng,
-        final_sale_value: finalSaleValue,
-      }),
-    });
-    if (response.ok) {
-      return response.json();
-    }
-  } catch (e) {
-    console.warn('API handover confirmation offline, updating local IndexedDB');
+  const response = await fetch(`${API_BASE_URL}/handovers/confirm`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      lot_id: lotId,
+      recycler_id: recyclerId,
+      short_code: shortCode,
+      gps_lat: lat,
+      gps_lng: lng,
+      final_sale_value: finalSaleValue,
+      payment_method: paymentMethod,
+    }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || `Handover confirmation failed with status ${response.status}`);
   }
-  return { status: 'confirmed' };
+  return response.json();
 }
 
 export interface PriceRefineResult {
@@ -161,55 +129,39 @@ export interface PriceRefineResult {
  */
 export async function refinePriceEstimate(
   category: string,
+  subCategory: string,
   weightKg: number,
   condition: string,
   district: string = 'Pune'
 ): Promise<PriceRefineResult> {
-  const FALLBACK_PRICES: Record<string, number> = {
-    PCB: 260, BATTERY: 90, CABLE: 150, LCD_PANEL: 110,
-    CRT: 40, MOTOR_MAGNET: 70, MIXED_PLASTIC: 25,
-  };
-  const COND_MULT: Record<string, number> = { intact: 1.0, damaged: 0.70, stripped: 0.40 };
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/prices/refine`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ category, weight_kg: weightKg, condition, district }),
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return response.json();
-  } catch (err) {
-    console.warn('Price refine offline fallback:', err);
-    const base = FALLBACK_PRICES[category] ?? 100;
-    const mult = COND_MULT[condition] ?? 1.0;
-    const total = Math.round(base * weightKg * mult * 100) / 100;
-    return {
-      base_price_per_kg: base,
-      condition_multiplier: mult,
+  const response = await fetch(`${API_BASE_URL}/prices/refine`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      category,
+      sub_category: subCategory,
       weight_kg: weightKg,
-      deterministic_total: total,
-      ml_adjustment: 0,
-      refined_total: total,
-      market_low: Math.round(base * 0.92 * weightKg * mult * 100) / 100,
-      market_high: Math.round(base * 1.08 * weightKg * mult * 100) / 100,
-      ml_confidence: 0,
-      sample_count: 0,
+      condition,
       district,
-    };
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Price refinement failed with status ${response.status}`);
   }
+  return response.json();
 }
 
 export interface AnomalyRecord {
   lot_id: string;
   collector_id: string;
-  material_category: string;
-  quoted_price: number;
-  median_price: number;
-  mad_score: number;
-  z_score: number;
-  condition_signal: string;
-  flagged_reasons: string[];
+  category: string;
+  weight_kg: number;
+  condition: string;
+  unit_price_per_kg: number;
+  category_median_price: number;
+  modified_z_score: number;
+  severity: 'low' | 'medium' | 'high';
+  reasons: string[];
   recommended_action: string;
   audit_status: string;
 }
@@ -234,6 +186,106 @@ export async function fetchAnomalies(): Promise<AnomalyRecord[]> {
     console.warn('Fetch anomalies offline fallback:', err);
     throw err;
   }
+}
+
+export async function resolveAnomaly(lotId: string): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/admin/anomalies/${encodeURIComponent(lotId)}/resolve`,
+    { method: 'PATCH' }
+  );
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || `Could not resolve anomaly (${response.status})`);
+  }
+}
+
+export interface RecyclerLotRecord {
+  lot_id: string;
+  category: string;
+  sub_category: string;
+  weight_kg: number;
+  condition: string;
+  estimated_value: number;
+  collector_id: string;
+  status: string;
+  final_sale_value?: number | null;
+  payment_status: string;
+  recycler_id: string;
+  created_at?: string | null;
+}
+
+export async function fetchRecyclerLots(recyclerId: string): Promise<RecyclerLotRecord[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/recyclers/${encodeURIComponent(recyclerId)}/lots`
+  );
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || `Could not load recycler lots (${response.status})`);
+  }
+  const lots: unknown = await response.json();
+  if (!Array.isArray(lots) || !lots.every(isRecyclerLotRecord)) {
+    throw new Error('Recycler lots endpoint returned an invalid response');
+  }
+  return lots;
+}
+
+export interface MineralImpactRecord {
+  unit: string;
+  district: string;
+  mineral_estimates: Record<string, number>;
+  total_e_waste_processed_kg: number;
+  estimate_basis: string;
+}
+
+export async function fetchMineralImpact(district = 'Pune'): Promise<MineralImpactRecord> {
+  const response = await fetch(
+    `${API_BASE_URL}/admin/minerals/impact?district=${encodeURIComponent(district)}`
+  );
+  if (!response.ok) {
+    throw new Error(`Could not load mineral estimates (${response.status})`);
+  }
+  const result: unknown = await response.json();
+  if (!isMineralImpactRecord(result)) {
+    throw new Error('Mineral estimates endpoint returned an invalid response');
+  }
+  return result;
+}
+
+function isMineralImpactRecord(value: unknown): value is MineralImpactRecord {
+  if (typeof value !== 'object' || value === null
+    || !('unit' in value) || typeof value.unit !== 'string'
+    || !('district' in value) || typeof value.district !== 'string'
+    || !('total_e_waste_processed_kg' in value) || typeof value.total_e_waste_processed_kg !== 'number'
+    || !('estimate_basis' in value) || typeof value.estimate_basis !== 'string'
+    || !('mineral_estimates' in value) || typeof value.mineral_estimates !== 'object'
+    || value.mineral_estimates === null || Array.isArray(value.mineral_estimates)) {
+    return false;
+  }
+  return Object.values(value.mineral_estimates).every(estimate => typeof estimate === 'number');
+}
+
+function isRecyclerLotRecord(value: unknown): value is RecyclerLotRecord {
+  if (typeof value !== 'object' || value === null) return false;
+  return 'lot_id' in value
+    && typeof value.lot_id === 'string'
+    && 'category' in value
+    && typeof value.category === 'string'
+    && 'sub_category' in value
+    && typeof value.sub_category === 'string'
+    && 'weight_kg' in value
+    && typeof value.weight_kg === 'number'
+    && 'condition' in value
+    && typeof value.condition === 'string'
+    && 'estimated_value' in value
+    && typeof value.estimated_value === 'number'
+    && 'collector_id' in value
+    && typeof value.collector_id === 'string'
+    && 'status' in value
+    && typeof value.status === 'string'
+    && 'payment_status' in value
+    && typeof value.payment_status === 'string'
+    && 'recycler_id' in value
+    && typeof value.recycler_id === 'string';
 }
 
 export async function submitFieldPriceReport(data: {
@@ -268,8 +320,8 @@ export async function registerRecycler(data: {
   name: string;
   contact_phone: string;
   authorization_ref_no: string;
-  facility_lat?: number;
-  facility_lng?: number;
+  facility_lat: number;
+  facility_lng: number;
   offered_rates: Record<string, number>;
   materials_accepted?: string[];
 }) {
@@ -277,45 +329,110 @@ export async function registerRecycler(data: {
     name: data.name,
     contact_phone: data.contact_phone,
     authorization_ref_no: data.authorization_ref_no,
-    facility_lat: data.facility_lat || 18.5204,
-    facility_lng: data.facility_lng || 73.8567,
+    facility_lat: data.facility_lat,
+    facility_lng: data.facility_lng,
     service_radius_km: 30.0,
     materials_accepted: data.materials_accepted || Object.keys(data.offered_rates),
-    authorization_status: 'verified',
     offered_rates: data.offered_rates,
-    pickup_available: true,
   };
 
-  try {
-    const response = await fetch(`${API_BASE_URL}/recyclers`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return response.json();
-  } catch (err) {
-    console.warn('Register recycler offline fallback:', err);
-    return {
-      recycler_id: `rec-local-${Date.now()}`,
-      ...payload,
-    };
+  const response = await fetch(`${API_BASE_URL}/recyclers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || `Recycler registration failed (${response.status})`);
   }
+  const result: unknown = await response.json();
+  if (!isRecyclerRegistration(result)) {
+    throw new Error('Recycler registration returned an invalid response');
+  }
+  return result;
 }
 
 export async function updateRecyclerRates(recyclerId: string, rates: Record<string, number>) {
-  try {
-    const response = await fetch(`${API_BASE_URL}/recyclers/${recyclerId}/rates`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rates }),
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return response.json();
-  } catch (err) {
-    console.warn('Update rates offline fallback:', err);
-    return { status: 'ok', rates };
+  const response = await fetch(`${API_BASE_URL}/recyclers/${encodeURIComponent(recyclerId)}/rates`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rates }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || `Could not update recycler rates (${response.status})`);
   }
+  return response.json();
+}
+
+export interface RecyclerProfileRecord {
+  recycler_id: string;
+  name: string;
+  authorization_status: 'pending' | 'verified' | 'rejected' | 'suspended';
+  offered_rates: Record<string, number>;
+  pickup_available: boolean;
+  service_radius_km: number;
+  materials_accepted: string[];
+}
+
+export async function fetchRecyclerProfile(recyclerId: string): Promise<RecyclerProfileRecord> {
+  const response = await fetch(`${API_BASE_URL}/recyclers/${encodeURIComponent(recyclerId)}`);
+  if (!response.ok) {
+    throw new Error(`Could not load recycler profile (${response.status})`);
+  }
+  const profile: unknown = await response.json();
+  if (!isRecyclerProfileRecord(profile)) {
+    throw new Error('Recycler profile endpoint returned an invalid response');
+  }
+  return profile;
+}
+
+export async function updateRecyclerConfig(
+  recyclerId: string,
+  config: {
+    pickup_available: boolean;
+    service_radius_km: number;
+    materials_accepted: string[];
+  },
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/recyclers/${encodeURIComponent(recyclerId)}/config`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || `Could not update recycler configuration (${response.status})`);
+  }
+}
+
+interface RecyclerRegistrationResponse {
+  recycler_id: string;
+  authorization_status: 'pending' | 'verified' | 'rejected' | 'suspended';
+}
+
+function isRecyclerRegistration(value: unknown): value is RecyclerRegistrationResponse {
+  return typeof value === 'object' && value !== null
+    && 'recycler_id' in value && typeof value.recycler_id === 'string'
+    && 'authorization_status' in value
+    && ['pending', 'verified', 'rejected', 'suspended'].includes(String(value.authorization_status));
+}
+
+function isRecyclerProfileRecord(value: unknown): value is RecyclerProfileRecord {
+  if (typeof value !== 'object' || value === null
+    || !('recycler_id' in value) || typeof value.recycler_id !== 'string'
+    || !('name' in value) || typeof value.name !== 'string'
+    || !('authorization_status' in value)
+    || !['pending', 'verified', 'rejected', 'suspended'].includes(String(value.authorization_status))
+    || !('offered_rates' in value) || typeof value.offered_rates !== 'object'
+    || value.offered_rates === null || Array.isArray(value.offered_rates)
+    || !('pickup_available' in value) || typeof value.pickup_available !== 'boolean'
+    || !('service_radius_km' in value) || typeof value.service_radius_km !== 'number'
+    || !('materials_accepted' in value) || !Array.isArray(value.materials_accepted)) {
+    return false;
+  }
+  return Object.values(value.offered_rates).every(rate => typeof rate === 'number')
+    && value.materials_accepted.every(category => typeof category === 'string');
 }
 
 // ─── Auth APIs ────────────────────────────────────────────────────────────────
