@@ -10,6 +10,14 @@ const getApiBaseUrl = () => {
 
 const API_BASE_URL = getApiBaseUrl();
 
+/** Returns Authorization header object if an access token is stored; empty object otherwise. */
+function authHeaders(): Record<string, string> {
+  const token = typeof window !== 'undefined'
+    ? window.localStorage.getItem('kabadiwala_access_token')
+    : null;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export interface PublicVerifyRecord {
   type: string;
   id: string;
@@ -246,7 +254,9 @@ export async function fetchPrices(district: string = 'Pune') {
 
 export async function fetchAnomalies(): Promise<AnomalyRecord[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/admin/anomalies`);
+    const response = await fetch(`${API_BASE_URL}/admin/anomalies`, {
+      headers: { ...authHeaders() },
+    });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     return (data || []).map((item: any) => ({
@@ -312,7 +322,8 @@ export interface MineralImpactRecord {
 
 export async function fetchMineralImpact(district = 'Pune'): Promise<MineralImpactRecord> {
   const response = await fetch(
-    `${API_BASE_URL}/admin/minerals/impact?district=${encodeURIComponent(district)}`
+    `${API_BASE_URL}/admin/minerals/impact?district=${encodeURIComponent(district)}`,
+    { headers: { ...authHeaders() } }
   );
   if (!response.ok) {
     throw new Error(`Could not load mineral estimates (${response.status})`);
@@ -622,7 +633,7 @@ export async function fetchShopFeriwalas(shopCode: string) {
 export async function resolveAnomaly(lotId: string, action: 'clean' | 'fraud' = 'clean') {
   const response = await fetch(`${API_BASE_URL}/admin/anomalies/${encodeURIComponent(lotId)}/resolve`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ action }),
   });
   if (!response.ok) {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Sparkles, Cpu, RefreshCw, BarChart2, Leaf, Globe } from 'lucide-react';
-import { API_BASE_URL } from '../../data/remote/apiClient';
+import { fetchMineralImpact } from '../../data/remote/apiClient';
 
 interface MineralImpactData {
   unit: string;
@@ -19,13 +19,8 @@ export const MineralsImpactPage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/minerals/impact`);
-      if (res.ok) {
-        const json = await res.json();
-        setData(json);
-      } else {
-        throw new Error('API failed');
-      }
+      const json = await fetchMineralImpact();
+      setData(json);
     } catch {
       // Offline / fallback mock dataset for JNARDDC demonstration
       setData({
