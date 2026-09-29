@@ -93,6 +93,13 @@ export const LoginPage: React.FC = () => {
       tag: 'Feriwala',
     },
     {
+      title: 'Vikram Singh (Linked Feriwala)',
+      desc: 'Sub-collector linked to SHOP-9876 • Kothrud',
+      phone: '9822044556',
+      role: 'collector' as const,
+      tag: 'Feriwala',
+    },
+    {
       title: 'Anil Deshmukh (Independent)',
       desc: 'Waste Collector • Shivajinagar',
       phone: '9800033333',
@@ -101,13 +108,20 @@ export const LoginPage: React.FC = () => {
     },
     {
       title: 'EcoRecycle India (Pune Hub)',
-      desc: 'MPCB Verified Recycler Facility',
-      phone: '9876543210',
+      desc: 'MPCB Verified Recycler • Pune',
+      phone: '9888888888',
       role: 'recycler' as const,
       tag: 'Recycler Hub',
     },
     {
-      title: 'GreenTech E-Waste Solutions',
+      title: 'Chinchwad Aggregators & Metal Works',
+      desc: 'MPCB Verified Recycler • Pimpri-Chinchwad',
+      phone: '9765432109',
+      role: 'recycler' as const,
+      tag: 'Recycler Hub',
+    },
+    {
+      title: 'GreenTech E-Waste Solutions (Mumbai)',
       desc: 'MPCB Verified Recycler • Mumbai',
       phone: '9812345678',
       role: 'recycler' as const,

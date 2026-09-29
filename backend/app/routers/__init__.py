@@ -5,7 +5,7 @@ from app.routers.authorizations import router as authorizations_router
 from app.routers.handovers import router as handovers_router
 from app.routers.ledger import router as ledger_router
 from app.routers.sync import router as sync_router
-from app.routers.admin import router as admin_router
+from app.routers.admin import router as admin_router, _seed_router as seed_router
 from app.routers.verify import router as verify_router
 from app.routers.auth import router as auth_router
 from app.routers.collectors import router as collectors_router
@@ -22,4 +22,5 @@ __all__ = [
     "verify_router",
     "auth_router",
     "collectors_router",
+    "seed_router",
 ]

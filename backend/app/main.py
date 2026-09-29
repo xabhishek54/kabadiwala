@@ -16,6 +16,7 @@ from app.routers import (
     verify_router,
     auth_router,
     collectors_router,
+    seed_router,
 )
 
 @asynccontextmanager
@@ -53,6 +54,7 @@ app.include_router(handovers_router)
 app.include_router(ledger_router)
 app.include_router(sync_router)
 app.include_router(admin_router)
+app.include_router(seed_router)
 app.include_router(verify_router)
 app.include_router(auth_router)
 app.include_router(collectors_router)

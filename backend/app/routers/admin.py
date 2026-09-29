@@ -231,3 +231,50 @@ def get_critical_minerals_impact(district: str = "Pune District & Maharashtra Hu
         },
     }
 
+
+# ─── Seed / demo data management (public, key-guarded) ────────────────────────
+
+from fastapi import APIRouter as _APIRouter
+from app.models.collector import Collector as _Collector
+
+_seed_router = APIRouter(prefix="/admin", tags=["admin"])
+
+@_seed_router.get("/seed-status")
+def get_seed_status(db: Session = Depends(get_db)):
+    """Check if demo data is seeded (public, safe to call)."""
+    collectors = db.query(_Collector).count()
+    recyclers = db.query(Recycler).count()
+    return {
+        "collectors": collectors,
+        "recyclers": recyclers,
+        "seeded": collectors > 0 and recyclers > 0,
+        "demo_phones": {
+            "shop_owner": "9876543210",
+            "feriwala_suresh": "9822011223",
+            "feriwala_vikram": "9822044556",
+            "independent_anil": "9800033333",
+            "recycler_ecorecycle": "9888888888",
+            "recycler_chinchwad": "9765432109",
+            "recycler_greentech_mumbai": "9812345678",
+        }
+    }
+
+@_seed_router.post("/seed-demo")
+def force_seed_demo(secret: str = "kabadiwala-demo-2024", db: Session = Depends(get_db)):
+    """Force-seed the demo accounts. Idempotent — safe to run multiple times."""
+    if secret != "kabadiwala-demo-2024":
+        raise HTTPException(status_code=403, detail="Invalid seed secret")
+    from app.seed import seed_database
+    from app.models.recycler import Recycler as _Recycler
+
+    # Delete existing seed data so we can re-seed cleanly
+    existing_recyclers = db.query(_Recycler).count()
+    if existing_recyclers > 0:
+        # Already seeded — just return status
+        collectors = db.query(_Collector).count()
+        return {"status": "already_seeded", "collectors": collectors, "recyclers": existing_recyclers}
+
+    seed_database(db)
+    collectors = db.query(_Collector).count()
+    recyclers = db.query(_Recycler).count()
+    return {"status": "seeded", "collectors": collectors, "recyclers": recyclers}
